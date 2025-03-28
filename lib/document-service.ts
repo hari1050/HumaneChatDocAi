@@ -42,7 +42,7 @@ export async function createDocument(title?: string, content?: string): Promise<
   return response.json()
 }
 
-// Update a document
+// Update adocument
 export async function updateDocument(id: string, updates: Partial<Document>): Promise<Document> {
   const response = await fetch(`/api/documents/${id}`, {
     method: "PATCH",
