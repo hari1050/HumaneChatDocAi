@@ -85,6 +85,41 @@ body {
   color-scheme: dark;
 }
 
+/* Dark mode prose styles */
+.prose {
+  @apply prose-invert;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  @apply text-foreground;
+}
+
+.prose p,
+.prose li,
+.prose ol,
+.prose ul {
+  @apply text-foreground/90;
+}
+
+.prose code {
+  @apply bg-secondary/30 text-foreground px-1 py-0.5 rounded;
+}
+
+.prose pre {
+  @apply bg-secondary/20 border border-border/40;
+}
+
+.prose a {
+  @apply text-primary hover:text-primary/80;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-border/60 bg-secondary/10 pl-4 py-1;
+}
+
 /* Grid pattern background for dark mode */
 .bg-grid-pattern {
   background-image: linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
@@ -109,13 +144,6 @@ body {
   outline: none;
 }
 
-/* Grid pattern background */
-.bg-grid-pattern {
-  background-image: linear-gradient(to right, rgba(0, 0, 0, 0.1) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
-  background-size: 20px 20px;
-}
-
 /* Gradient animation */
 @keyframes gradient-shift {
   0% {
@@ -132,5 +160,86 @@ body {
 .animate-gradient {
   background-size: 200% 200%;
   animation: gradient-shift 15s ease infinite;
+}
+
+/* Humane Landing Page Styles */
+
+/* Gradient background */
+.gradient-bg {
+  background: linear-gradient(to bottom, #000000, #1a1a1a);
+}
+
+/* Animated gradient button */
+.animated-gradient-button {
+  background: linear-gradient(to right, #ff6b6b, #444);
+  color: white;
+  border: none;
+  transition: transform 0.3s ease;
+}
+
+.animated-gradient-button:hover {
+  transform: translateY(-2px);
+  opacity: 0.9;
+}
+
+/* Animated text */
+.animated-text {
+  position: relative;
+  height: 70px;
+  overflow: hidden;
+}
+
+.animated-word {
+  position: absolute;
+  opacity: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  animation: rotateWord 6s linear infinite 0s;
+}
+
+.animated-word:nth-child(2) {
+  animation-delay: 2s;
+}
+
+.animated-word:nth-child(3) {
+  animation-delay: 4s;
+}
+
+@keyframes rotateWord {
+  0% {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  5% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  35% {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Animated border */
+@keyframes border-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-border-rotate {
+  background: conic-gradient(from 0deg, #ff4444, #ff8f44, #ffcd44, #ff4444);
+  animation: border-rotate 4s linear infinite;
 }
 

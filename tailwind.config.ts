@@ -19,6 +19,9 @@ const config = {
       },
     },
     extend: {
+      fontFamily: {
+        inter: ["var(--font-inter)"],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -53,14 +56,6 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        sidebar: {
-          DEFAULT: "hsl(var(--sidebar-background, var(--background)))",
-          foreground: "hsl(var(--sidebar-foreground, var(--foreground)))",
-          border: "hsl(var(--sidebar-border, var(--border)))",
-          ring: "hsl(var(--sidebar-ring, var(--ring)))",
-          accent: "hsl(var(--sidebar-accent, var(--accent)))",
-          "accent-foreground": "hsl(var(--sidebar-accent-foreground, var(--accent-foreground)))",
-        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -80,13 +75,6 @@ const config = {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-      },
-      typography: {
-        DEFAULT: {
-          css: {
-            maxWidth: "100%",
-          },
-        },
       },
     },
   },
