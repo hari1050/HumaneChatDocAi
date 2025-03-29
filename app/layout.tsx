@@ -9,7 +9,7 @@ import { Inter } from "next/font/google"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "WriteX - AI Document Editor",
+  title: "Humane - AI Document Editor",
   description: "An intelligent writing assistant that helps you create, refine, and enhance your content.",
 }
 
