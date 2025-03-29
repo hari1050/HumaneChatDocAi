@@ -173,6 +173,8 @@ export async function POST(req: NextRequest) {
     // Prepare the messages array for the API
     const apiMessages = [{ role: "system", content: systemPrompt }, ...messages]
 
+    console.log("API Messages:", apiMessages)
+
     // Make the request to Perplexity API
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
@@ -194,6 +196,7 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await response.json()
+    console.log("Perplexity API response:", data.choices[0].message)
 
     return NextResponse.json({
       message: data.choices[0].message.content,
