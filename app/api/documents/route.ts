@@ -4,7 +4,7 @@ import { auth } from "@clerk/nextjs/server"
 
 // GET all documents for the current user
 export async function GET(req: NextRequest) {
-  const { userId } = auth()
+  const { userId } = await auth()  // Add await here
 
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
 // POST create a new document
 export async function POST(req: NextRequest) {
-  const { userId } = auth()
+  const { userId } = await auth()  // Add await here too
 
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -51,4 +51,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to create document" }, { status: 500 })
   }
 }
-

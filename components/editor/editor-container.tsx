@@ -4,9 +4,7 @@ import { useState, useEffect } from "react"
 import { DocumentSidebar } from "./document-sidebar"
 import { TextEditor } from "./text-editor"
 import { AssistantSidebar } from "./assistant-sidebar"
-import { UserButton } from "@clerk/nextjs"
-import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { fetchDocuments, createDocument, updateDocument, deleteDocument } from "@/lib/document-service"
 import { useToast } from "@/hooks/use-toast"
 
@@ -119,84 +117,64 @@ export function EditorContainer() {
     }
   }
 
+  const toggleDocumentSidebar = () => {
+    setShowDocumentSidebar(!showDocumentSidebar)
+  }
+
+  const toggleAssistantSidebar = () => {
+    setShowAssistantSidebar(!showAssistantSidebar)
+  }
+
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex h-screen items-center justify-center bg-black">
+        <Loader2 className="h-8 w-8 animate-spin text-white" />
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="editor-container">
       {/* Document Sidebar */}
-      <div
-        className={`border-r border-border/40 ${showDocumentSidebar ? "w-60" : "w-0"} transition-all duration-200 overflow-hidden bg-background/95`}
-      >
-        {showDocumentSidebar && (
-          <DocumentSidebar
-            documents={documents}
-            activeDocumentId={activeDocumentId || ""}
-            onSelectDocument={setActiveDocumentId}
-            onCreateDocument={handleCreateDocument}
-            onDeleteDocument={handleDeleteDocument}
-          />
-        )}
-      </div>
+      {showDocumentSidebar && (
+        <DocumentSidebar
+          documents={documents}
+          activeDocumentId={activeDocumentId || ""}
+          onSelectDocument={setActiveDocumentId}
+          onCreateDocument={handleCreateDocument}
+          onDeleteDocument={handleDeleteDocument}
+          onToggleSidebar={toggleDocumentSidebar}
+        />
+      )}
 
       {/* Main Editor Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-14 border-b border-border/40 flex items-center px-4 justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="flex items-center">
-            <Button variant="ghost" size="icon" onClick={() => setShowDocumentSidebar(!showDocumentSidebar)}>
-              {showDocumentSidebar ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            </Button>
-            <h1 className="ml-2 text-lg font-medium">
-              {activeDocument ? activeDocument.title : "No Document Selected"}
-            </h1>
+      {activeDocument ? (
+        <TextEditor
+          document={activeDocument}
+          onUpdateDocument={(updates) => handleUpdateDocument(activeDocument.id, updates)}
+          onToggleDocumentSidebar={toggleDocumentSidebar}
+          onToggleAssistantSidebar={toggleAssistantSidebar}
+          showDocumentSidebar={showDocumentSidebar}
+          showAssistantSidebar={showAssistantSidebar}
+        />
+      ) : (
+        <div className="editor-main flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-xl font-medium mb-4">No Document Selected</h2>
+            <button
+              onClick={handleCreateDocument}
+              className="px-4 py-2 bg-white text-black rounded hover:bg-white/90 transition-colors"
+            >
+              Create New Document
+            </button>
           </div>
-          <div className="flex items-center gap-2">
-            <UserButton afterSignOutUrl="/" />
-          </div>
-        </header>
-
-        <div className="flex-1 flex overflow-hidden">
-          {activeDocument ? (
-            <>
-              <div className="flex-1 overflow-auto bg-background">
-                <TextEditor
-                  document={activeDocument}
-                  onUpdateDocument={(updates) => handleUpdateDocument(activeDocument.id, updates)}
-                />
-              </div>
-
-              {/* Assistant Sidebar */}
-              <div
-                className={`border-l border-border/40 ${showAssistantSidebar ? "w-80" : "w-0"} transition-all duration-200 overflow-hidden bg-background/95`}
-              >
-                {showAssistantSidebar && <AssistantSidebar document={activeDocument} allDocuments={documents} />}
-              </div>
-
-              {/* Toggle Assistant Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-0 top-1/2 transform -translate-y-1/2 z-10"
-                onClick={() => setShowAssistantSidebar(!showAssistantSidebar)}
-              >
-                {showAssistantSidebar ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-              </Button>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <h2 className="text-xl font-medium mb-4">No Document Selected</h2>
-                <Button onClick={handleCreateDocument}>Create New Document</Button>
-              </div>
-            </div>
-          )}
         </div>
-      </div>
+      )}
+
+      {/* Assistant Sidebar */}
+      {showAssistantSidebar && activeDocument && (
+        <AssistantSidebar document={activeDocument} allDocuments={documents} onToggleSidebar={toggleAssistantSidebar} />
+      )}
     </div>
   )
 }

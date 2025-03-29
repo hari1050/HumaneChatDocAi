@@ -4,7 +4,7 @@ import { auth } from "@clerk/nextjs/server"
 
 // GET a specific document
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const { userId } = auth()
+  const { userId } = await auth()
 
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const { data, error } = await supabase
       .from("documents")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", await params.id)
       .eq("user_id", userId)
       .single()
 
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
 // PATCH update a document
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const { userId } = auth()
+  const { userId } = await auth()
 
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -52,7 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const { data, error } = await supabase
       .from("documents")
       .update(updates)
-      .eq("id", params.id)
+      .eq("id", await params.id)
       .eq("user_id", userId)
       .select()
 
@@ -71,7 +71,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
 // DELETE a document
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const { userId } = auth()
+  const { userId } = await auth()
 
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
