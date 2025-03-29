@@ -401,3 +401,54 @@ body {
   background: #444;
 }
 
+/* Hero section word carousel animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeOutDown {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+}
+
+.word-carousel-item {
+  animation: fadeInUp 0.5s forwards;
+}
+
+.word-carousel-item-exit {
+  animation: fadeOutDown 0.5s forwards;
+}
+
+/* Gradient background for hero section */
+.gradient-bg {
+  background: linear-gradient(to bottom, #000000, #111111);
+}
+
+/* Blinking cursor animation for typewriter effect */
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
+

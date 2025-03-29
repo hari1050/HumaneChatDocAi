@@ -1,6 +1,6 @@
 "use client"
 import { Button } from "@/components/ui/button"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Check } from "lucide-react"
 import Link from "next/link"
 
@@ -42,6 +42,48 @@ const ArrowIcon = () => (
 export default function HeroSection() {
   const [isApplied, setIsApplied] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [displayText, setDisplayText] = useState("")
+  const [wordIndex, setWordIndex] = useState(0)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const words = ["Write", "Edit", "Research"]
+  const typingSpeed = 150
+  const deletingSpeed = 100
+  const pauseBeforeDelete = 1500
+  const pauseBeforeNextWord = 500
+
+  // Typewriter effect
+  useEffect(() => {
+    let timer: NodeJS.Timeout
+
+    if (isDeleting) {
+      // Deleting text
+      if (displayText.length > 0) {
+        timer = setTimeout(() => {
+          setDisplayText(displayText.slice(0, -1))
+        }, deletingSpeed)
+      } else {
+        // Finished deleting, move to next word
+        setIsDeleting(false)
+        setWordIndex((prev) => (prev + 1) % words.length)
+        timer = setTimeout(() => {}, pauseBeforeNextWord)
+      }
+    } else {
+      // Typing text
+      const currentWord = words[wordIndex]
+      if (displayText.length < currentWord.length) {
+        timer = setTimeout(() => {
+          setDisplayText(currentWord.slice(0, displayText.length + 1))
+        }, typingSpeed)
+      } else {
+        // Finished typing, pause before deleting
+        timer = setTimeout(() => {
+          setIsDeleting(true)
+        }, pauseBeforeDelete)
+      }
+    }
+
+    return () => clearTimeout(timer)
+  }, [displayText, isDeleting, wordIndex, words])
 
   const handleApply = () => {
     setIsApplied(true)
@@ -61,16 +103,11 @@ export default function HeroSection() {
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col items-center text-center mb-12">
           <div className="flex flex-col items-center mb-4 w-full">
-            <div className="animated-text text-4xl md:text-5xl lg:text-6xl font-bold w-full">
-              <span className="animated-word bg-gradient-to-br from-[#e62e2e] via-[#e62e2e] to-[#222] bg-clip-text text-transparent">
-                Write
-              </span>
-              <span className="animated-word bg-gradient-to-br from-[#e62e2e] via-[#e62e2e] to-[#222] bg-clip-text text-transparent">
-                Edit
-              </span>
-              <span className="animated-word bg-gradient-to-br from-[#e62e2e] via-[#e62e2e] to-[#222] bg-clip-text text-transparent">
-                Research
-              </span>
+            <div className="h-24 md:h-28 lg:h-32 flex items-center justify-center">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-br from-[#e62e2e] via-[#e62e2e] to-[#222] bg-clip-text text-transparent">
+                {displayText}
+                <span className="animate-blink">|</span>
+              </h1>
             </div>
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mt-6">with AI</h1>
           </div>
