@@ -20,11 +20,13 @@ import {
   List,
   ListOrdered,
   Download,
-  Share,
-  RotateCcw,
+  Copy,
   ChevronRight,
   ChevronLeft,
 } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import { exportHtmlAsDocx } from "@/lib/docx-export"
+import { SelectionToolbar } from "./selection-toolbar"
 
 interface TextEditorProps {
   document: Document
@@ -36,22 +38,60 @@ interface TextEditorProps {
 }
 
 export function TextEditor({
-  document,
+  document: documentData,
   onUpdateDocument,
   onToggleDocumentSidebar,
   onToggleAssistantSidebar,
   showDocumentSidebar,
   showAssistantSidebar,
 }: TextEditorProps) {
-  const [title, setTitle] = useState(document.title)
+  const { toast } = useToast()
+  const [title, setTitle] = useState(documentData.title)
   const [isSaving, setIsSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [contentChanged, setContentChanged] = useState(false)
   const [titleChanged, setTitleChanged] = useState(false)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const lastContentRef = useRef(document.content)
-  const lastTitleRef = useRef(document.title)
+  const lastContentRef = useRef(documentData.content)
+  const lastTitleRef = useRef(documentData.title)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  // Selection toolbar state
+  const [showSelectionToolbar, setShowSelectionToolbar] = useState(false)
+  const [selectedText, setSelectedText] = useState("")
+  const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 })
+  const editorContentRef = useRef<HTMLDivElement>(null)
+  const [editorBounds, setEditorBounds] = useState<DOMRect | null>(null)
+  const selectionDebounceRef = useRef<NodeJS.Timeout | null>(null)
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Heading.configure({
+        levels: [1, 2, 3],
+      }),
+      Link.configure({
+        openOnClick: false,
+      }),
+      Image,
+      Underline,
+      Placeholder.configure({
+        placeholder: "New document",
+      }),
+    ],
+    content: documentData.content,
+    onUpdate: ({ editor, transaction }) => {
+      // Only trigger save if this is a user input transaction (typing)
+      if (transaction.docChanged) {
+        const html = editor.getHTML()
+        debouncedSaveContent(html)
+      }
+    },
+    onSelectionUpdate: () => {
+      checkSelectionWithDebounce()
+    },
+  })
 
   // Debounced save function for content
   const debouncedSaveContent = useCallback(
@@ -102,39 +142,69 @@ export function TextEditor({
     [onUpdateDocument, title, contentChanged, titleChanged],
   )
 
-  // Clean up timeout on unmount
+  // Function to check selection and show toolbar with debounce
+  const checkSelectionWithDebounce = useCallback(() => {
+    if (!editor) return
+
+    // Clear any existing debounce timeout
+    if (selectionDebounceRef.current) {
+      clearTimeout(selectionDebounceRef.current)
+    }
+
+    // Set a new debounce timeout
+    selectionDebounceRef.current = setTimeout(() => {
+      const { from, to } = editor.state.selection
+
+      if (from !== to) {
+        const text = editor.state.doc.textBetween(from, to, " ")
+        if (text.trim()) {
+          // Update editor bounds
+          if (editorContentRef.current) {
+            setEditorBounds(editorContentRef.current.getBoundingClientRect())
+          }
+
+          setSelectedText(text)
+
+          // Get the position for the toolbar - use the selection's coordinates
+          const view = editor.view
+          const { from, to } = editor.state.selection
+          const start = view.coordsAtPos(from)
+          const end = view.coordsAtPos(to)
+
+          // Position the toolbar above the middle of the selection
+          const middleX = (start.left + end.left) / 2
+          setSelectionPosition({
+            x: middleX,
+            y: start.top - 10, // Position it slightly above the top of the selection
+          })
+
+          setShowSelectionToolbar(true)
+        } else {
+          setShowSelectionToolbar(false)
+        }
+      } else {
+        setShowSelectionToolbar(false)
+      }
+    }, 200) // 200ms debounce
+  }, [editor])
+
+  // Add mouseup listener to detect selections made by dragging
   useEffect(() => {
+    const handleMouseUp = () => {
+      checkSelectionWithDebounce()
+    }
+
+    const editorContent = editorContentRef.current
+    if (editorContent) {
+      editorContent.addEventListener("mouseup", handleMouseUp)
+    }
+
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current)
+      if (editorContent) {
+        editorContent.removeEventListener("mouseup", handleMouseUp)
       }
     }
-  }, [])
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Heading.configure({
-        levels: [1, 2, 3],
-      }),
-      Link.configure({
-        openOnClick: false,
-      }),
-      Image,
-      Underline,
-      Placeholder.configure({
-        placeholder: "New document",
-      }),
-    ],
-    content: document.content,
-    onUpdate: ({ editor, transaction }) => {
-      // Only trigger save if this is a user input transaction (typing)
-      if (transaction.docChanged) {
-        const html = editor.getHTML()
-        debouncedSaveContent(html)
-      }
-    },
-  })
+  }, [checkSelectionWithDebounce, editor])
 
   // Handle title changes with debounce
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -183,6 +253,107 @@ export function TextEditor({
         setIsSaving(false)
       }
     }, 10000) // 10 seconds debounce
+  }
+
+  // Handle document download
+  const handleDownloadDocument = async () => {
+    if (!editor) return
+
+    setIsDownloading(true)
+
+    try {
+      // Get the HTML content from the editor
+      const content = editor.getHTML()
+      const fileName = `${title || "Untitled"}.docx`
+
+      // Use our custom export function
+      exportHtmlAsDocx(content, fileName)
+
+      toast({
+        title: "Download started",
+        description: `Your document "${fileName}" is being downloaded.`,
+      })
+    } catch (error) {
+      console.error("Failed to download document:", error)
+      toast({
+        title: "Download failed",
+        description: "There was an error downloading your document. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  // Handle document copy
+  const handleCopyDocument = async () => {
+    if (!editor) return
+
+    try {
+      const content = editor.getText() || ""
+      await navigator.clipboard.writeText(content)
+
+      toast({
+        title: "Copied to clipboard",
+        description: "Document content has been copied to your clipboard",
+      })
+    } catch (err) {
+      console.error("Failed to copy document content:", err)
+
+      toast({
+        title: "Copy failed",
+        description: "Failed to copy document content to clipboard",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Handle text transformation
+  const handleTransformText = async (text: string, prompt: string) => {
+    if (!editor) return
+
+    try {
+      const response = await fetch("/api/transform", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text, prompt }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to transform text")
+      }
+
+      const data = await response.json()
+
+      // Replace the selected text with the transformed text
+      const { from, to } = editor.state.selection
+      editor.chain().focus().deleteRange({ from, to }).insertContent(data.transformedText).run()
+
+      toast({
+        title: "Text transformed",
+        description: "The selected text has been transformed successfully",
+      })
+    } catch (error) {
+      console.error("Failed to transform text:", error)
+      toast({
+        title: "Transform failed",
+        description: error instanceof Error ? error.message : "Failed to transform text",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Handle adding selected text to chat
+  const handleAddToChat = (text: string) => {
+    // This will be implemented later
+    toast({
+      title: "Added to chat",
+      description: "The selected text has been added to the chat",
+    })
+    setShowSelectionToolbar(false)
   }
 
   if (!editor) {
@@ -242,14 +413,24 @@ export function TextEditor({
           )}
         </div>
         <div className="flex items-center space-x-2">
-          <button className="p-2 rounded hover:bg-[#1a1a1a] transition-colors">
-            <Download className="h-4 w-4" />
+          <button
+            className="p-2 rounded hover:bg-[#1a1a1a] transition-colors"
+            onClick={handleDownloadDocument}
+            disabled={isDownloading}
+            title="Download document as DOCX"
+          >
+            {isDownloading ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
           </button>
-          <button className="p-2 rounded hover:bg-[#1a1a1a] transition-colors">
-            <Share className="h-4 w-4" />
-          </button>
-          <button className="p-2 rounded hover:bg-[#1a1a1a] transition-colors">
-            <RotateCcw className="h-4 w-4" />
+          <button
+            className="p-2 rounded hover:bg-[#1a1a1a] transition-colors"
+            onClick={handleCopyDocument}
+            title="Copy document content"
+          >
+            <Copy className="h-4 w-4" />
           </button>
           {!showAssistantSidebar && (
             <button
@@ -351,11 +532,22 @@ export function TextEditor({
         </div>
       </div>
 
-      <div className="editor-content">
+      <div className="editor-content" ref={editorContentRef}>
         <EditorContent
           editor={editor}
           className="prose prose-invert prose-sm sm:prose-base max-w-none focus:outline-none"
         />
+
+        {showSelectionToolbar && (
+          <SelectionToolbar
+            selectedText={selectedText}
+            onTransform={handleTransformText}
+            onAddToChat={handleAddToChat}
+            onClose={() => setShowSelectionToolbar(false)}
+            position={selectionPosition}
+            editorBounds={editorBounds || new DOMRect(0, 0, 0, 0)}
+          />
+        )}
       </div>
     </div>
   )

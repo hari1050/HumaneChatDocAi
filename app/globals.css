@@ -102,6 +102,7 @@ body {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
+  position: relative;
 }
 
 .document-header {
@@ -450,5 +451,79 @@ body {
 
 .animate-blink {
   animation: blink 1s step-end infinite;
+}
+
+/* Add these styles at the end of the file */
+
+/* Update the selection toolbar styles to ensure it's above everything */
+.selection-toolbar {
+  position: fixed; /* Change from absolute to fixed */
+  z-index: 99999; /* Even higher z-index */
+  background-color: #111;
+  border: 1px solid #444; /* Make the border more visible */
+  border-radius: 9999px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); /* Stronger shadow for better visibility */
+}
+
+.selection-toolbar-button {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  color: white;
+  border-radius: 9999px;
+  transition: background-color 0.2s;
+  font-size: 0.75rem;
+  height: 1.75rem;
+}
+
+.selection-toolbar-button:hover {
+  background-color: #222;
+}
+
+.selection-toolbar-divider {
+  width: 1px;
+  height: 1rem;
+  background-color: #333;
+}
+
+.selection-toolbar-input {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem;
+  width: 450px;
+}
+
+.selection-toolbar-input input {
+  flex: 1;
+  background-color: transparent;
+  border: none;
+  outline: none;
+  color: white;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  height: 1.75rem;
+}
+
+.selection-toolbar-input button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  color: white;
+  border-radius: 9999px;
+  transition: background-color 0.2s;
+  height: 1.5rem;
+  width: 1.5rem;
+}
+
+.selection-toolbar-input button:hover {
+  background-color: #222;
+}
+
+.selection-toolbar-input button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
