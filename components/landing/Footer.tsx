@@ -12,7 +12,7 @@ export default function Footer() {
 
           <Link
             href="/sign-up"
-            className="inline-flex items-center px-8 py-3 rounded-full bg-white text-black font-semibold text-lg hover:opacity-90 transition-opacity"
+            className="inline-flex items-center px-8 py-3 rounded-full bg-gradient-to-br from-[#ff3333] via-[#ff3333] to-[#222] text-white font-semibold text-lg hover:opacity-90 transition-opacity"
           >
             Start Writing <span className="ml-2">→</span>
           </Link>
@@ -33,7 +33,7 @@ export default function Footer() {
           </div>
 
           <div className="flex items-center gap-4">
-            <span>Created with love</span>
+            <span>Created by Vee</span>
             <Link href="#" className="hover:text-white transition-colors">
               Terms
             </Link>

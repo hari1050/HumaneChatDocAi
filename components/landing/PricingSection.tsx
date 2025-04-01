@@ -1,13 +1,52 @@
+"use client"
+
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { CheckIcon } from "lucide-react"
+import { CheckIcon, Loader2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { useToast } from "@/hooks/use-toast"
 
 export default function PricingSection() {
+  const router = useRouter()
+  const { toast } = useToast()
+  const [isLoading, setIsLoading] = useState(false)
+
   const features = [
     "Full access to all features",
     "Priority onboarding support",
     "Unlimited team members",
     "Early adopter benefits",
   ]
+
+  const handleSubscribe = async () => {
+    setIsLoading(true)
+
+    try {
+      // First, check if the user is authenticated by making a lightweight request
+      const authCheckResponse = await fetch("/api/auth/check", {
+        method: "GET",
+      })
+
+      // If not authenticated, redirect to sign-in
+      if (!authCheckResponse.ok) {
+        // Redirect to sign-up page
+        router.push("/sign-up")
+        return
+      }
+
+      // User is authenticated, redirect to payment page
+      router.push("/payment")
+    } catch (error) {
+      console.error("Error:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   return (
     <section className="bg-black py-20 px-6 md:px-10 lg:px-20">
@@ -27,8 +66,19 @@ export default function PricingSection() {
               </div>
               <p className="text-gray-400 mb-6">3-day free trial, cancel anytime</p>
 
-              <Button className="w-full mb-8 bg-gradient-to-r from-[#ff4444] via-[#ff8f44] to-[#ffcd44] hover:opacity-90 text-white">
-                Get Started
+              <Button
+                className="w-full mb-8 bg-gradient-to-r from-[#ff4444] via-[#ff8f44] to-[#ffcd44] hover:opacity-90 text-white"
+                onClick={handleSubscribe}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  "Start Free Trial"
+                )}
               </Button>
             </div>
 
