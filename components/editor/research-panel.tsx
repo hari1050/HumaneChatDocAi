@@ -1,13 +1,14 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { BookOpen, Loader2, ExternalLink, XCircle } from "lucide-react"
+import { BookOpen, Loader2, ExternalLink, XCircle, CheckCircle2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 
 type WebSource = {
   url: string
@@ -40,12 +41,52 @@ interface ResearchPanelProps {
   setWebSources: React.Dispatch<React.SetStateAction<WebSource[]>>
 }
 
+// Research progress phases
+const PHASES = {
+  INITIAL_SEARCH: {
+    progress: 10,
+    title: "Initiating research"
+  },
+  SEARCHING: {
+    progress: 25,
+    title: "Searching for relevant information"
+  },
+  ANALYZING: {
+    progress: 50,
+    title: "Analyzing findings"
+  },
+  SYNTHESIZING: {
+    progress: 75,
+    title: "Preparing final analysis"
+  },
+  COMPLETE: {
+    progress: 100,
+    title: "Research complete"
+  }
+}
+
 export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps) {
   const { toast } = useToast()
   const [researchQuery, setResearchQuery] = useState("")
   const [researchResult, setResearchResult] = useState<ResearchResult | null>(null)
   const [isResearching, setIsResearching] = useState(false)
   const [researchError, setResearchError] = useState("")
+  
+  // Streaming research progress state
+  const [currentPhase, setCurrentPhase] = useState<keyof typeof PHASES | null>(null)
+  const [progressValue, setProgressValue] = useState(0)
+  const [progressMessage, setProgressMessage] = useState("")
+  const [activities, setActivities] = useState<string[]>([])
+  const abortControllerRef = useRef<AbortController | null>(null)
+  
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [])
 
   // Handle research query
   const handleResearch = async (e: React.FormEvent) => {
@@ -53,16 +94,32 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
 
     if (!researchQuery.trim()) return
 
+    // Reset states
     setIsResearching(true)
     setResearchResult(null)
     setResearchError("")
+    setCurrentPhase(null)
+    setProgressValue(0)
+    setProgressMessage("")
+    setActivities([])
+    
+    // Create a new AbortController for this request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    abortControllerRef.current = new AbortController()
 
     try {
-      const response = await fetch(`/api/web-search?query=${encodeURIComponent(researchQuery)}`, {
+      // Create the URL with the query
+      const apiUrl = `/api/web-search?query=${encodeURIComponent(researchQuery)}`
+      
+      // Make the fetch request with streaming response
+      const response = await fetch(apiUrl, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
+        signal: abortControllerRef.current.signal
       })
 
       if (!response.ok) {
@@ -70,18 +127,82 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
         throw new Error(errorData.error || "Failed to perform research")
       }
 
-      const data = await response.json()
-      setResearchResult(data)
+      // Process the streaming response
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error("Failed to get response stream")
+      }
+
+      let buffer = ""
+
+      // Function to process streaming data
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          // End of stream
+          break
+        }
+        
+        // Decode the chunk and add to buffer
+        buffer += new TextDecoder().decode(value)
+        
+        // Process complete lines in the buffer
+        while (buffer.includes('\n')) {
+          const lineEndIndex = buffer.indexOf('\n')
+          const line = buffer.substring(0, lineEndIndex).trim()
+          buffer = buffer.substring(lineEndIndex + 1)
+          
+          if (line) {
+            try {
+              const data = JSON.parse(line)
+              
+              // Handle different message types
+              if (data.type === 'progress') {
+                // Update progress state
+                const phase = data.phase as keyof typeof PHASES
+                setCurrentPhase(phase)
+                setProgressValue(data.progress)
+                setProgressMessage(data.message)
+                
+                if (data.activity) {
+                  // Add new activity at the beginning of the list
+                  setActivities(prev => [data.activity, ...prev])
+                }
+              } 
+              else if (data.type === 'result') {
+                // Got the final result
+                setResearchResult(data)
+                setIsResearching(false)
+              } 
+              else if (data.type === 'error') {
+                throw new Error(data.error || "Research error")
+              }
+            } catch (parseError) {
+              console.warn("Error parsing streaming response line:", parseError, line)
+            }
+          }
+        }
+      }
+      
     } catch (error) {
       console.error("Error performing research:", error)
+      
+      // Ignore abort errors
+      if (error instanceof DOMException && error.name === "AbortError") {
+        console.log("Research request was aborted")
+        return
+      }
+      
       setResearchError(error instanceof Error ? error.message : "Failed to perform research")
+      setIsResearching(false)
+      setCurrentPhase(null)
+      
       toast({
         title: "Research Error",
         description: error instanceof Error ? error.message : "Failed to perform detailed research",
         variant: "destructive",
       })
-    } finally {
-      setIsResearching(false)
     }
   }
 
@@ -117,14 +238,56 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
     })
   }
 
+  // Generate activity items with appropriate status indicators
+  const renderActivities = () => {
+    return activities.map((activity, index) => (
+      <div key={index} className="flex items-start gap-2 text-sm">
+        {index > 0 ? (
+          <CheckCircle2 className="h-4 w-4 text-green-400 mt-0.5" />
+        ) : (
+          <Loader2 className="h-4 w-4 animate-spin text-blue-400 mt-0.5" />
+        )}
+        <span>{activity}</span>
+      </div>
+    ))
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Result section - appears above the search input */}
       <div className="flex-1 overflow-y-auto p-4">
         {isResearching ? (
-          <div className="flex flex-col items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-2" />
-            <span className="text-sm text-muted-foreground">Researching "{researchQuery}", this may take a moment...</span>
+          <div className="space-y-4">
+            <Card className="border-[#2a2a2a] bg-[#0a0a0a]">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex justify-between items-center">
+                  <span>Research in Progress...</span>
+                  <Badge variant="outline" className="bg-[#1a1a1a]">
+                    {progressValue}% Complete
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Progress value={progressValue} className="h-2 bg-[#1a1a1a]" />
+                
+                <div className="mt-4">
+                  <h3 className="text-base font-medium mb-2">
+                    {currentPhase && PHASES[currentPhase].title}
+                    {currentPhase === "SEARCHING" && ` for "${researchQuery}"`}
+                  </h3>
+                  
+                  <div className="space-y-1 mt-4">
+                    <div className="flex justify-between text-sm text-muted-foreground mb-2">
+                      <span>Activity Log</span>
+                      <span>{activities.length} activities</span>
+                    </div>
+                    <div className="space-y-2 border border-[#1a1a1a] rounded-md p-3 bg-[#0d0d0d]">
+                      {renderActivities()}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         ) : researchError ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -230,7 +393,7 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
           <Input
             value={researchQuery}
             onChange={(e) => setResearchQuery(e.target.value)}
-            placeholder="Research a topic (e.g., 'Lionel Messi')"
+            placeholder="Research a topic (e.g., 'GTM strategies for startups')"
             className="h-10 bg-[#1a1a1a] border-none"
             disabled={isResearching}
           />

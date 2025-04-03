@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
 import { extractUrlContent } from "@/utils/urlContentExtractor"
 
 // Define the structure of a chat message
@@ -28,7 +28,10 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.PERPLEXITY_API_KEY
 
     if (!apiKey) {
-      return NextResponse.json({ error: "Perplexity API key is not configured" }, { status: 500 })
+      return new Response(JSON.stringify({ error: "Perplexity API key is not configured" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      })
     }
 
     // Parse the request body
@@ -36,12 +39,20 @@ export async function POST(req: NextRequest) {
     const { messages, documentContext, webSources, documentSources } = body
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return NextResponse.json({ error: "Messages are required" }, { status: 400 })
+      return new Response(JSON.stringify({ error: "Messages are required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
     }
 
     // Build the system prompt with context
     let systemPrompt =
-      "You are an AI writing assistant integrated into a document editor called Humane. Your primary role is to help users with their writing tasks. NEVER respond with generic information about greetings or words. Instead, always:\n\n1. Acknowledge that you're a writing assistant in the Humane editor\n2. Offer specific help related to the document content when available\n3. Suggest ways you can assist with writing, editing, brainstorming, or research\n4. Keep responses focused on helping improve the document\n\nIf a user sends a simple greeting like 'hi' or 'hello', respond by introducing yourself as the Humane AI assistant and asking how you can help with their document."
+      "You are an AI writing assistant integrated into a document editor called WriteX. Your primary role is to help users with their writing tasks. NEVER respond with generic information about greetings or words. Instead, always:\n\n" +
+      "1. Acknowledge that you're a writing assistant in the WriteX editor\n" +
+      "2. Offer specific help related to the document content when available\n" +
+      "3. Suggest ways you can assist with writing, editing, brainstorming, or research\n" +
+      "4. Keep responses focused on helping improve the document\n\n" +
+      "If a user sends a simple greeting like 'hi' or 'hello', respond by introducing yourself as the WriteX AI assistant and asking how you can help with their document."
 
     // Add document context if available
     if (documentContext) {
@@ -51,10 +62,7 @@ export async function POST(req: NextRequest) {
       const docContent =
         typeof documentContext === "object" && documentContext.content ? documentContext.content : documentContext
 
-      systemPrompt += `CURRENT DOCUMENT:
-                      Title: ${docTitle}
-                      Content: ${docContent}
-                      When responding, reference this document content when relevant.`
+      systemPrompt += `\n\nCURRENT DOCUMENT:\nTitle: ${docTitle}\nContent: ${docContent}\n\nWhen responding, reference this document content when relevant.`
     }
 
     // Add other document sources if available
@@ -93,7 +101,7 @@ export async function POST(req: NextRequest) {
                   Authorization: `Bearer ${apiKey}`,
                 },
                 body: JSON.stringify({
-                  model: "sonar-pro ",
+                  model: "sonar-pro",
                   messages: [
                     {
                       role: "system",
@@ -173,38 +181,138 @@ export async function POST(req: NextRequest) {
     // Prepare the messages array for the API
     const apiMessages = [{ role: "system", content: systemPrompt }, ...messages]
 
-    console.log("API Messages:", apiMessages)
+    // Create a streaming response
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // Make the request to Perplexity API with streaming enabled
+          const response = await fetch("https://api.perplexity.ai/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: "sonar-pro",
+              messages: apiMessages,
+              temperature: 0.7,
+              max_tokens: 2048,
+              stream: true, // Enable streaming
+            }),
+          })
 
-    // Make the request to Perplexity API
-    const response = await fetch("https://api.perplexity.ai/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+          if (!response.ok) {
+            const errorText = await response.text()
+            controller.enqueue(encoder.encode(JSON.stringify({ error: `Perplexity API error: ${errorText}` })))
+            controller.close()
+            return
+          }
+
+          if (!response.body) {
+            controller.enqueue(encoder.encode(JSON.stringify({ error: "No response body" })))
+            controller.close()
+            return
+          }
+
+          const reader = response.body.getReader()
+          let fullText = ""
+          let buffer = "" // Buffer to accumulate partial chunks
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            // Decode the chunk and add it to our buffer
+            const chunk = new TextDecoder().decode(value)
+            buffer += chunk
+
+            // Process complete messages in the buffer
+            let processedBuffer = ""
+            const lines = buffer.split("\n")
+
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i]
+
+              // If this isn't the last line, it's a complete line
+              if (i < lines.length - 1) {
+                if (line.startsWith("data: ")) {
+                  try {
+                    const jsonStr = line.slice(6).trim() // Remove 'data: ' prefix
+
+                    // Check for [DONE] message
+                    if (jsonStr === "[DONE]") continue
+
+                    const json = JSON.parse(jsonStr)
+
+                    if (json.choices && json.choices[0].delta && json.choices[0].delta.content) {
+                      const textChunk = json.choices[0].delta.content
+                      fullText += textChunk
+
+                      // Send the chunk to the client - just send the new chunk, not the full text
+                      controller.enqueue(
+                        encoder.encode(
+                          JSON.stringify({
+                            chunk: textChunk,
+                          }),
+                        ),
+                      )
+                    }
+                  } catch (e) {
+                    console.error("Error parsing JSON from stream:", e, line)
+                    // Continue processing other lines even if one fails
+                  }
+                }
+              } else {
+                // This is the last line, which might be incomplete
+                processedBuffer = line
+              }
+            }
+
+            // Update buffer with any unprocessed content
+            buffer = processedBuffer
+          }
+
+          // Send a final message with the complete text
+          controller.enqueue(
+            encoder.encode(
+              JSON.stringify({
+                done: true,
+                fullText,
+                webSourcesProcessed: webSources ? webSources.length : 0,
+              }),
+            ),
+          )
+          controller.close()
+        } catch (error) {
+          console.error("Error in streaming response:", error)
+          controller.enqueue(
+            encoder.encode(
+              JSON.stringify({
+                error: "An error occurred while processing your request",
+                errorDetails: error instanceof Error ? error.message : String(error),
+              }),
+            ),
+          )
+          controller.close()
+        }
       },
-      body: JSON.stringify({
-        model: "sonar-pro",
-        messages: apiMessages,
-        temperature: 0.7,
-        max_tokens: 2048,
-      }),
     })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      return NextResponse.json({ error: `Perplexity API error: ${errorText}` }, { status: response.status })
-    }
-
-    const data = await response.json()
-    console.log("Perplexity API response:", data.choices[0].message)
-
-    return NextResponse.json({
-      message: data.choices[0].message.content,
-      webSourcesProcessed: webSources ? webSources.length : 0,
+    // Return the streaming response
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
     })
   } catch (error) {
     console.error("Error in chat API:", error)
-    return NextResponse.json({ error: "An error occurred while processing your request" }, { status: 500 })
+    return new Response(JSON.stringify({ error: "An error occurred while processing your request" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    })
   }
 }
 

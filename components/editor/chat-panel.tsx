@@ -51,13 +51,15 @@ export function ChatPanel({
   const [isLoading, setIsLoading] = useState(false)
   const [newWebSource, setNewWebSource] = useState("")
   const [showWebSourceInput, setShowWebSourceInput] = useState(false)
+  const [streamingMessage, setStreamingMessage] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const webSourceInputRef = useRef<HTMLInputElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change or when streaming
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+  }, [messages, streamingMessage])
 
   // Focus web source input when shown
   useEffect(() => {
@@ -66,6 +68,15 @@ export function ChatPanel({
     }
   }, [showWebSourceInput])
 
+  // Cleanup abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [])
+
   // Always include the current document as context
   const currentDocumentContext = {
     id: document.id,
@@ -73,80 +84,227 @@ export function ChatPanel({
     content: document.content,
   }
 
-  // Handle sending a message
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // Function to extract JSON objects from a string that might contain multiple JSON objects
+  const extractJsonObjects = (str: string): { objects: any[]; remainingStr: string } => {
+    const objects: any[] = []
+    let remainingStr = str
+    let startIndex = 0
 
-    if (!input.trim()) return
+    while (startIndex < remainingStr.length) {
+      try {
+        // Try to find the start of a JSON object
+        const openBraceIndex = remainingStr.indexOf("{", startIndex)
+        if (openBraceIndex === -1) break
 
-    // Add user message
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: input,
+        // Try to parse from this position to find a valid JSON object
+        let endIndex = openBraceIndex + 1
+        let openBraces = 1
+
+        // Find the matching closing brace
+        while (endIndex < remainingStr.length && openBraces > 0) {
+          if (remainingStr[endIndex] === "{") openBraces++
+          if (remainingStr[endIndex] === "}") openBraces--
+          endIndex++
+        }
+
+        if (openBraces === 0) {
+          // We found a potential JSON object, try to parse it
+          try {
+            const jsonStr = remainingStr.substring(openBraceIndex, endIndex)
+            const obj = JSON.parse(jsonStr)
+            objects.push(obj)
+
+            // Move past this JSON object for next iteration
+            startIndex = endIndex
+            
+            // Remove the processed part from the remaining string if this is our first object
+            if (objects.length === 1) {
+              remainingStr = remainingStr.substring(endIndex)
+              startIndex = 0
+            }
+          } catch (e) {
+            // Not valid JSON, move to the next character
+            startIndex = openBraceIndex + 1
+          }
+        } else {
+          // No matching closing brace found, move to the next character
+          startIndex = openBraceIndex + 1
+        }
+      } catch (e) {
+        // Error in processing, move to the next character
+        startIndex++
+      }
     }
 
-    setMessages((prev) => [...prev, userMessage])
-    setInput("")
-    setIsLoading(true)
+    return { objects, remainingStr }
+  }
 
-    try {
-      // Get document sources content
-      const docSourcesWithContent = documentSources.map((source) => {
-        const doc = allDocuments.find((d) => d.id === source.id)
+  // Handle sending a message
+  // This is the function you need to modify in your ChatPanel component
+const handleSendMessage = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  if (!input.trim()) return;
+
+  // Add user message
+  const userMessage: Message = {
+    id: Date.now().toString(),
+    role: "user",
+    content: input,
+  };
+
+  setMessages((prev) => [...prev, userMessage]);
+  setInput("");
+  setIsLoading(true);
+  setStreamingMessage("");  // Start with empty string
+
+  // Create a new AbortController for this request
+  if (abortControllerRef.current) {
+    abortControllerRef.current.abort();
+  }
+  abortControllerRef.current = new AbortController();
+
+  try {
+    // Prepare chat request with your existing logic
+    const chatRequest = {
+      messages: [...messages, userMessage].map(({ role, content }) => ({ role, content })),
+      documentContext: {
+        title: document.title,
+        content: document.content,
+      },
+      webSources: webSources.map((source) => ({ url: source.url })),
+      documentSources: documentSources.map((source) => {
+        const doc = allDocuments.find((d) => d.id === source.id);
         return {
           id: source.id,
           title: source.title,
           content: doc?.content || "",
-        }
-      })
+        };
+      }),
+    };
 
-      // Prepare chat request - simplified to just include document and web sources
-      const chatRequest = {
-        messages: [...messages, userMessage].map(({ role, content }) => ({ role, content })),
-        documentContext: {
-          title: currentDocumentContext.title,
-          content: currentDocumentContext.content,
-        },
-        webSources: webSources.map((source) => ({ url: source.url })),
-        documentSources: docSourcesWithContent,
-      }
+    // Send request to API with streaming
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(chatRequest),
+      signal: abortControllerRef.current.signal,
+    });
 
-      // Send request to API
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(chatRequest),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to get response from AI")
-      }
-
-      const data = await response.json()
-
-      // Add AI response
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.message,
-      }
-
-      setMessages((prev) => [...prev, aiMessage])
-    } catch (error) {
-      console.error("Error sending message:", error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to get response from AI",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoading(false)
+    if (!response.ok || !response.body) {
+      throw new Error("Failed to get response from AI");
     }
+
+    // Process the streaming response - SIMPLIFIED VERSION
+    const reader = response.body.getReader();
+    let fullText = "";
+    let buffer = "";
+    let finalText = null;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        // Convert the chunk to text and add to buffer
+        buffer += new TextDecoder().decode(value);
+        
+        // Simple JSON extraction - one object at a time
+        while (buffer.includes('{') && buffer.includes('}')) {
+          const startIndex = buffer.indexOf('{');
+          const endIndex = buffer.indexOf('}', startIndex) + 1;
+          
+          if (endIndex > startIndex) {
+            try {
+              // Try to parse this as JSON
+              const jsonStr = buffer.substring(startIndex, endIndex);
+              const data = JSON.parse(jsonStr);
+              
+              // Update the message content based on what we received
+              if (data.chunk) {
+                fullText += data.chunk;
+                setStreamingMessage(fullText);
+              }
+              
+              if (data.done && data.fullText) {
+                finalText = data.fullText;
+                setStreamingMessage(finalText);
+              }
+              
+              // Remove the processed part from the buffer
+              buffer = buffer.substring(endIndex);
+            } catch (e) {
+              // If parsing fails, skip this character and try again
+              buffer = buffer.substring(startIndex + 1);
+            }
+          } else {
+            // No complete JSON object found, wait for more data
+            break;
+          }
+        }
+      }
+
+      // Add the final message when streaming is complete
+      const responseText = finalText || fullText;
+      if (responseText.trim()) {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: responseText,
+        };
+
+        // Clear streaming message first to avoid duplication
+        setStreamingMessage(null);
+        setMessages((prev) => [...prev, aiMessage]);
+      }
+    } catch (streamError) {
+      console.error("Error processing stream:", streamError);
+      
+      // If we have partial content, still show it
+      if (fullText.trim()) {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: fullText + "\n\n[Error: Message was cut off due to a technical issue]",
+        };
+        setStreamingMessage(null);
+        setMessages((prev) => [...prev, aiMessage]);
+      }
+    }
+  } catch (error) {
+    // Ignore abort errors
+    if (error instanceof DOMException && error.name === "AbortError") {
+      console.log("Request was aborted");
+      return;
+    }
+  
+    console.error("Error sending message:", error);
+    
+    // Add an error message from the assistant to the chat
+    const errorMessage: Message = {
+      id: (Date.now() + 1).toString(),
+      role: "assistant",
+      content: "I'm sorry, I encountered an error processing your request. Please try refreshing the page or contact support if the issue persists.",
+    };
+    
+    // Clear streaming message first
+    setStreamingMessage(null);
+    
+    // Add the error message to the chat
+    setMessages((prev) => [...prev, errorMessage]);
+    
+    // Also show toast notification
+    toast({
+      title: "Error",
+      description: error instanceof Error ? error.message : "Failed to get response from AI",
+      variant: "destructive",
+    });
+  } finally {
+    setIsLoading(false);
+    setStreamingMessage(null);
+    abortControllerRef.current = null;
   }
+};
 
   // Handle adding a web source
   const handleAddWebSource = (e?: React.FormEvent) => {
@@ -322,7 +480,7 @@ export function ChatPanel({
         )}
       </div>
 
-      {messages.length > 0 ? (
+      {messages.length > 0 || streamingMessage !== null ? (
         <div className="assistant-messages">
           {messages.map((message) => (
             <div
@@ -332,7 +490,16 @@ export function ChatPanel({
               {message.content}
             </div>
           ))}
-          {isLoading && (
+
+          {/* Only show streaming message if we're actively loading */}
+          {isLoading && streamingMessage !== null && (
+            <div className="bg-[#111] p-3 rounded-lg mb-4 mr-8">
+              {streamingMessage}
+              <span className="inline-block w-2 h-4 ml-1 bg-white animate-pulse"></span>
+            </div>
+          )}
+
+          {isLoading && streamingMessage === null && (
             <div className="flex justify-center items-center py-4">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
@@ -372,4 +539,3 @@ export function ChatPanel({
     </div>
   )
 }
-
