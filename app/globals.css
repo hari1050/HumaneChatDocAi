@@ -88,7 +88,8 @@ body {
   flex-direction: column;
   height: 100%;
   font-size: 0.875rem;
-  transition: width 0.3s ease, min-width 0.3s ease;
+  transition: none; /* Remove transition to allow smooth resizing */
+  position: relative; /* Add position relative for the resize handle */
 }
 
 .editor-toolbar {
@@ -485,6 +486,7 @@ body {
   width: 1px;
   height: 1rem;
   background-color: #333;
+  margin: 0 8px;
 }
 
 .selection-toolbar-input {
@@ -540,5 +542,148 @@ body {
 
 .animate-pulse {
   animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Editor change highlighting */
+.editor-change-highlight-added {
+  background-color: rgba(0, 255, 0, 0.2) !important;
+  transition: background-color 0.3s ease;
+}
+
+.editor-change-highlight-deleted {
+  background-color: rgba(255, 0, 0, 0.2) !important;
+  text-decoration: line-through;
+  transition: background-color 0.3s ease;
+}
+
+/* Message action buttons */
+.message-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 0.25rem;
+  transition: all 0.2s ease;
+}
+
+.message-action-button svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-right: 0.25rem;
+}
+
+.message-action-apply {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: rgb(96, 165, 250);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.message-action-apply:hover {
+  background-color: rgba(59, 130, 246, 0.3);
+}
+
+.message-action-copy {
+  background-color: rgba(107, 114, 128, 0.2);
+  color: rgb(156, 163, 175);
+  border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+.message-action-copy:hover {
+  background-color: rgba(107, 114, 128, 0.3);
+}
+
+.message-action-accept {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: rgb(52, 211, 153);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.message-action-accept:hover {
+  background-color: rgba(16, 185, 129, 0.3);
+}
+
+.message-action-reject {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: rgb(248, 113, 113);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.message-action-reject:hover {
+  background-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Resize handle styles */
+.resize-handle {
+  position: absolute;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.resize-handle:hover::after,
+.resize-handle:active::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Chat history styles */
+.chat-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.chat-history-item:hover {
+  background-color: #1a1a1a;
+}
+
+.chat-history-item-title {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.chat-history-item-delete {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.chat-history-item:hover .chat-history-item-delete {
+  opacity: 1;
+}
+
+.chat-history-item-delete:hover {
+  color: #f43f5e;
+}
+
+/* Empty chat history state */
+.chat-history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+}
+
+.chat-history-empty-icon {
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.chat-history-empty-text {
+  font-size: 12px;
+  color: #888;
 }
 

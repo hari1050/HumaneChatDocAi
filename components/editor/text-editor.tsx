@@ -3,7 +3,9 @@
 import type React from "react"
 import { useState, useEffect, useRef, useCallback } from "react"
 import type { Document } from "./editor-container"
-import { useEditor, EditorContent } from "@tiptap/react"
+import { useEditor as useTiptapEditor, EditorContent } from "@tiptap/react"
+import { useEditor } from "@/context/editor-context"
+import type { EditorChange } from "@/types/editor-types"
 import StarterKit from "@tiptap/starter-kit"
 import Heading from "@tiptap/extension-heading"
 import Link from "@tiptap/extension-link"
@@ -27,6 +29,8 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { exportHtmlAsDocx } from "@/lib/docx-export"
 import { SelectionToolbar } from "./selection-toolbar"
+import { Plugin, PluginKey } from "prosemirror-state"
+import { Decoration, DecorationSet } from "prosemirror-view"
 
 interface TextEditorProps {
   document: Document
@@ -65,7 +69,13 @@ export function TextEditor({
   const [editorBounds, setEditorBounds] = useState<DOMRect | null>(null)
   const selectionDebounceRef = useRef<NodeJS.Timeout | null>(null)
 
-  const editor = useEditor({
+  // Get editor context
+  const { editorRef, activeChange, setActiveChange } = useEditor()
+
+  // Create a unique class name for highlighting changes
+  const changeHighlightClass = "editor-change-highlight"
+
+  const editor = useTiptapEditor({
     extensions: [
       StarterKit,
       Heading.configure({
@@ -84,6 +94,11 @@ export function TextEditor({
     onUpdate: ({ editor, transaction }) => {
       // Only trigger save if this is a user input transaction (typing)
       if (transaction.docChanged) {
+        // If there's an active change and the user is typing, clear it
+        if (activeChange && transaction.docChanged) {
+          setActiveChange(null)
+        }
+
         const html = editor.getHTML()
         debouncedSaveContent(html)
       }
@@ -92,6 +107,93 @@ export function TextEditor({
       checkSelectionWithDebounce()
     },
   })
+
+  // Set up editor ref methods
+  useEffect(() => {
+    if (!editor) return
+
+    // Create a plugin key that we can reference later
+    const highlightPluginKey = new PluginKey("changeHighlight")
+
+    // Add extension for custom highlighting
+    const highlightPlugin = new Plugin({
+      key: highlightPluginKey,
+      props: {
+        decorations: (state) => {
+          if (!activeChange) return DecorationSet.empty
+
+          // Only apply decoration if we have an active change
+          const { from, to } = activeChange
+          return DecorationSet.create(state.doc, [
+            Decoration.inline(from, to, {
+              class: `${changeHighlightClass}-added`,
+            }),
+          ])
+        },
+      },
+    })
+
+    editor.registerPlugin(highlightPlugin)
+
+    // Expose editor methods through ref
+    editorRef.current = {
+      editor,
+      applyText: async (text, messageId) => {
+        if (!editor) return null
+
+        // Get current selection or cursor position
+        const { from, to } = editor.state.selection
+
+        // Generate a unique ID for this change
+        const changeId = `change-${Date.now()}`
+
+        // Store the original text
+        const originalText = editor.state.doc.textBetween(from, to)
+
+        // Apply the change
+        editor.chain().focus().deleteRange({ from, to }).insertContent(text).run()
+
+        // Create change object
+        const change: EditorChange = {
+          id: changeId,
+          appliedMessageId: messageId,
+          originalText,
+          newText: text,
+          from,
+          to: from + text.length,
+        }
+
+        // Set as active change
+        setActiveChange(change)
+
+        return change
+      },
+      acceptChange: (changeId) => {
+        if (!activeChange || activeChange.id !== changeId) return
+
+        // Simply clear the active change to remove highlighting
+        setActiveChange(null)
+      },
+      rejectChange: (changeId) => {
+        if (!editor || !activeChange || activeChange.id !== changeId) return
+
+        // Revert to original text
+        const { from, to, originalText } = activeChange
+        editor.chain().focus().deleteRange({ from, to }).insertContent(originalText).run()
+
+        // Clear active change
+        setActiveChange(null)
+      },
+      hasActiveChange: !!activeChange,
+    }
+
+    return () => {
+      // Clean up plugin when component unmounts
+      if (editor) {
+        editor.unregisterPlugin(highlightPluginKey)
+      }
+    }
+  }, [editor, activeChange, setActiveChange])
 
   // Debounced save function for content
   const debouncedSaveContent = useCallback(

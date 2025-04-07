@@ -7,6 +7,7 @@ import { AssistantSidebar } from "./assistant-sidebar"
 import { Loader2 } from "lucide-react"
 import { fetchDocuments, createDocument, updateDocument, deleteDocument } from "@/lib/document-service"
 import { useToast } from "@/hooks/use-toast"
+import { EditorProvider } from "@/context/editor-context"
 
 export type Document = {
   id: string
@@ -134,48 +135,54 @@ export function EditorContainer() {
   }
 
   return (
-    <div className="editor-container">
-      {/* Document Sidebar */}
-      {showDocumentSidebar && (
-        <DocumentSidebar
-          documents={documents}
-          activeDocumentId={activeDocumentId || ""}
-          onSelectDocument={setActiveDocumentId}
-          onCreateDocument={handleCreateDocument}
-          onDeleteDocument={handleDeleteDocument}
-          onToggleSidebar={toggleDocumentSidebar}
-        />
-      )}
+    <EditorProvider>
+      <div className="editor-container">
+        {/* Document Sidebar */}
+        {showDocumentSidebar && (
+          <DocumentSidebar
+            documents={documents}
+            activeDocumentId={activeDocumentId || ""}
+            onSelectDocument={setActiveDocumentId}
+            onCreateDocument={handleCreateDocument}
+            onDeleteDocument={handleDeleteDocument}
+            onToggleSidebar={toggleDocumentSidebar}
+          />
+        )}
 
-      {/* Main Editor Area */}
-      {activeDocument ? (
-        <TextEditor
-          document={activeDocument}
-          onUpdateDocument={(updates) => handleUpdateDocument(activeDocument.id, updates)}
-          onToggleDocumentSidebar={toggleDocumentSidebar}
-          onToggleAssistantSidebar={toggleAssistantSidebar}
-          showDocumentSidebar={showDocumentSidebar}
-          showAssistantSidebar={showAssistantSidebar}
-        />
-      ) : (
-        <div className="editor-main flex items-center justify-center">
-          <div className="text-center">
-            <h2 className="text-xl font-medium mb-4">No Document Selected</h2>
-            <button
-              onClick={handleCreateDocument}
-              className="px-4 py-2 bg-white text-black rounded hover:bg-white/90 transition-colors"
-            >
-              Create New Document
-            </button>
+        {/* Main Editor Area */}
+        {activeDocument ? (
+          <TextEditor
+            document={activeDocument}
+            onUpdateDocument={(updates) => handleUpdateDocument(activeDocument.id, updates)}
+            onToggleDocumentSidebar={toggleDocumentSidebar}
+            onToggleAssistantSidebar={toggleAssistantSidebar}
+            showDocumentSidebar={showDocumentSidebar}
+            showAssistantSidebar={showAssistantSidebar}
+          />
+        ) : (
+          <div className="editor-main flex items-center justify-center">
+            <div className="text-center">
+              <h2 className="text-xl font-medium mb-4">No Document Selected</h2>
+              <button
+                onClick={handleCreateDocument}
+                className="px-4 py-2 bg-white text-black rounded hover:bg-white/90 transition-colors"
+              >
+                Create New Document
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Assistant Sidebar */}
-      {showAssistantSidebar && activeDocument && (
-        <AssistantSidebar document={activeDocument} allDocuments={documents} onToggleSidebar={toggleAssistantSidebar} />
-      )}
-    </div>
+        {/* Assistant Sidebar */}
+        {showAssistantSidebar && activeDocument && (
+          <AssistantSidebar
+            document={activeDocument}
+            allDocuments={documents}
+            onToggleSidebar={toggleAssistantSidebar}
+          />
+        )}
+      </div>
+    </EditorProvider>
   )
 }
 

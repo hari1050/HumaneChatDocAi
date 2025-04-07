@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useState } from "react"
+import { ResizeHandle } from "@/components/ui/resize-handle"
 
 interface DocumentSidebarProps {
   documents: Document[]
@@ -35,6 +36,16 @@ export function DocumentSidebar({
   onToggleSidebar,
 }: DocumentSidebarProps) {
   const [documentToDelete, setDocumentToDelete] = useState<string | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState(240)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const handleResize = (delta: number) => {
+    setSidebarWidth((prev) => {
+      // Limit the minimum and maximum width
+      const newWidth = prev + delta
+      return Math.min(Math.max(newWidth, 180), 400)
+    })
+  }
 
   const handleDeleteClick = (e: React.MouseEvent, docId: string) => {
     e.stopPropagation()
@@ -49,7 +60,20 @@ export function DocumentSidebar({
   }
 
   return (
-    <div className="document-sidebar">
+    <div
+      className="document-sidebar"
+      style={{
+        width: `${sidebarWidth}px`,
+        minWidth: `${sidebarWidth}px`,
+        transition: isDragging ? "none" : "width 0.1s ease-out, min-width 0.1s ease-out",
+      }}
+    >
+      <ResizeHandle
+        className="right-0"
+        onResize={handleResize}
+        onDragStart={() => setIsDragging(true)}
+        onDragEnd={() => setIsDragging(false)}
+      />
       <div className="flex items-center justify-between px-3 py-2">
         <h2 className="text-base font-normal">Documents</h2>
         <div className="flex items-center gap-2">

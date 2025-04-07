@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input"
 import { MessageSquare, X, Plus, Loader2, ExternalLink, FileText, Check } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { MessageActions } from "./message-actions"
+import { createChat, updateChat, generateChatTitle } from "@/lib/chat-service-client"
 
 type Message = {
   id: string
@@ -35,6 +37,9 @@ interface ChatPanelProps {
   setWebSources: React.Dispatch<React.SetStateAction<WebSource[]>>
   documentSources: DocumentSource[]
   setDocumentSources: React.Dispatch<React.SetStateAction<DocumentSource[]>>
+  currentChatId?: string | null
+  initialMessages?: Message[]
+  onChatUpdated?: (chatId: string) => void
 }
 
 export function ChatPanel({
@@ -44,17 +49,31 @@ export function ChatPanel({
   setWebSources,
   documentSources,
   setDocumentSources,
+  currentChatId = null,
+  initialMessages = [],
+  onChatUpdated,
 }: ChatPanelProps) {
   const { toast } = useToast()
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [newWebSource, setNewWebSource] = useState("")
   const [showWebSourceInput, setShowWebSourceInput] = useState(false)
   const [streamingMessage, setStreamingMessage] = useState<string | null>(null)
+  const [chatId, setChatId] = useState<string | null>(currentChatId)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const webSourceInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  // Update messages when initialMessages changes
+  useEffect(() => {
+    setMessages(initialMessages)
+  }, [initialMessages])
+
+  // Update chatId when currentChatId changes
+  useEffect(() => {
+    setChatId(currentChatId)
+  }, [currentChatId])
 
   // Scroll to bottom when messages change or when streaming
   useEffect(() => {
@@ -116,7 +135,7 @@ export function ChatPanel({
 
             // Move past this JSON object for next iteration
             startIndex = endIndex
-            
+
             // Remove the processed part from the remaining string if this is our first object
             if (objects.length === 1) {
               remainingStr = remainingStr.substring(endIndex)
@@ -139,172 +158,296 @@ export function ChatPanel({
     return { objects, remainingStr }
   }
 
-  // Handle sending a message
-  // This is the function you need to modify in your ChatPanel component
-const handleSendMessage = async (e: React.FormEvent) => {
-  e.preventDefault();
-
-  if (!input.trim()) return;
-
-  // Add user message
-  const userMessage: Message = {
-    id: Date.now().toString(),
-    role: "user",
-    content: input,
-  };
-
-  setMessages((prev) => [...prev, userMessage]);
-  setInput("");
-  setIsLoading(true);
-  setStreamingMessage("");  // Start with empty string
-
-  // Create a new AbortController for this request
-  if (abortControllerRef.current) {
-    abortControllerRef.current.abort();
-  }
-  abortControllerRef.current = new AbortController();
-
-  try {
-    // Prepare chat request with your existing logic
-    const chatRequest = {
-      messages: [...messages, userMessage].map(({ role, content }) => ({ role, content })),
-      documentContext: {
-        title: document.title,
-        content: document.content,
-      },
-      webSources: webSources.map((source) => ({ url: source.url })),
-      documentSources: documentSources.map((source) => {
-        const doc = allDocuments.find((d) => d.id === source.id);
-        return {
-          id: source.id,
-          title: source.title,
-          content: doc?.content || "",
-        };
-      }),
-    };
-
-    // Send request to API with streaming
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(chatRequest),
-      signal: abortControllerRef.current.signal,
-    });
-
-    if (!response.ok || !response.body) {
-      throw new Error("Failed to get response from AI");
-    }
-
-    // Process the streaming response - SIMPLIFIED VERSION
-    const reader = response.body.getReader();
-    let fullText = "";
-    let buffer = "";
-    let finalText = null;
-
+  // Function to save chat to database
+  const saveChat = async (newMessages: Message[]) => {
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      if (chatId) {
+        // Update existing chat
+        await updateChat(chatId, { messages: newMessages })
+      } else {
+        // Create new chat with a title based on the first user message
+        const firstUserMessage = newMessages.find((m) => m.role === "user")
+        if (firstUserMessage) {
+          const title = generateChatTitle(firstUserMessage.content)
+          const newChat = await createChat(document.id, title, newMessages[0])
+          setChatId(newChat.id)
 
-        // Convert the chunk to text and add to buffer
-        buffer += new TextDecoder().decode(value);
-        
-        // Simple JSON extraction - one object at a time
-        while (buffer.includes('{') && buffer.includes('}')) {
-          const startIndex = buffer.indexOf('{');
-          const endIndex = buffer.indexOf('}', startIndex) + 1;
-          
-          if (endIndex > startIndex) {
-            try {
-              // Try to parse this as JSON
-              const jsonStr = buffer.substring(startIndex, endIndex);
-              const data = JSON.parse(jsonStr);
-              
-              // Update the message content based on what we received
-              if (data.chunk) {
-                fullText += data.chunk;
-                setStreamingMessage(fullText);
-              }
-              
-              if (data.done && data.fullText) {
-                finalText = data.fullText;
-                setStreamingMessage(finalText);
-              }
-              
-              // Remove the processed part from the buffer
-              buffer = buffer.substring(endIndex);
-            } catch (e) {
-              // If parsing fails, skip this character and try again
-              buffer = buffer.substring(startIndex + 1);
-            }
-          } else {
-            // No complete JSON object found, wait for more data
-            break;
+          // Notify parent component that a chat was created
+          if (onChatUpdated) {
+            onChatUpdated(newChat.id)
           }
         }
       }
-
-      // Add the final message when streaming is complete
-      const responseText = finalText || fullText;
-      if (responseText.trim()) {
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: responseText,
-        };
-
-        // Clear streaming message first to avoid duplication
-        setStreamingMessage(null);
-        setMessages((prev) => [...prev, aiMessage]);
-      }
-    } catch (streamError) {
-      console.error("Error processing stream:", streamError);
-      
-      // If we have partial content, still show it
-      if (fullText.trim()) {
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: fullText + "\n\n[Error: Message was cut off due to a technical issue]",
-        };
-        setStreamingMessage(null);
-        setMessages((prev) => [...prev, aiMessage]);
-      }
+    } catch (error) {
+      console.error("Error saving chat:", error)
+      toast({
+        title: "Error",
+        description: "Failed to save chat history",
+        variant: "destructive",
+      })
     }
-  } catch (error) {
-    // Ignore abort errors
-    if (error instanceof DOMException && error.name === "AbortError") {
-      console.log("Request was aborted");
-      return;
-    }
-  
-    console.error("Error sending message:", error);
-    
-    // Add an error message from the assistant to the chat
-    const errorMessage: Message = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content: "I'm sorry, I encountered an error processing your request. Please try refreshing the page or contact support if the issue persists.",
-    };
-    
-    // Clear streaming message first
-    setStreamingMessage(null);
-    
-    // Add the error message to the chat
-    setMessages((prev) => [...prev, errorMessage]);
-    
-    // Also show toast notification
-    toast({
-      title: "Error",
-      description: error instanceof Error ? error.message : "Failed to get response from AI",
-      variant: "destructive",
-    });
-  } finally {
-    setIsLoading(false);
-    setStreamingMessage(null);
-    abortControllerRef.current = null;
   }
-};
+
+  // Handle sending a message
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!input.trim()) return
+
+    // Add user message
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: input,
+    }
+
+    const updatedMessages = [...messages, userMessage]
+    setMessages(updatedMessages)
+    setInput("")
+    setIsLoading(true)
+    setStreamingMessage("") // Start with empty string
+
+    // REPLACE THIS SECTION that saves the user message immediately:
+    // Save the user message immediately
+    // if (!chatId && messages.length === 0) {
+    //   // This is the first message in a new chat
+    //   try {
+    //     const title = generateChatTitle(userMessage.content);
+    //     const newChat = await createChat(document.id, title, userMessage);
+    //     setChatId(newChat.id);
+
+    //     // Notify parent component that a chat was created
+    //     if (onChatUpdated) {
+    //       onChatUpdated(newChat.id);
+    //     }
+    //   } catch (error) {
+    //     console.error("Error creating new chat:", error);
+    //   }
+    // } else if (chatId) {
+    //   // Update existing chat with the new user message
+    //   try {
+    //     await updateChat(chatId, { messages: updatedMessages });
+    //   } catch (error) {
+    //     console.error("Error updating chat with user message:", error);
+    //   }
+    // }
+
+    // WITH THIS:
+    // We'll only save after the AI response is received
+    // No immediate saving of user message here
+
+    // Create a new AbortController for this request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    abortControllerRef.current = new AbortController()
+
+    try {
+      // Prepare chat request with your existing logic
+      const chatRequest = {
+        messages: updatedMessages.map(({ role, content }) => ({ role, content })),
+        documentContext: {
+          title: document.title,
+          content: document.content,
+        },
+        webSources: webSources.map((source) => ({ url: source.url })),
+        documentSources: documentSources.map((source) => {
+          const doc = allDocuments.find((d) => d.id === source.id)
+          return {
+            id: source.id,
+            title: source.title,
+            content: doc?.content || "",
+          }
+        }),
+      }
+
+      // Send request to API with streaming
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(chatRequest),
+        signal: abortControllerRef.current.signal,
+      })
+
+      if (!response.ok || !response.body) {
+        throw new Error("Failed to get response from AI")
+      }
+
+      // Process the streaming response - SIMPLIFIED VERSION
+      const reader = response.body.getReader()
+      let fullText = ""
+      let buffer = ""
+      let finalText = null
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          // Convert the chunk to text and add to buffer
+          buffer += new TextDecoder().decode(value)
+
+          // Simple JSON extraction - one object at a time
+          while (buffer.includes("{") && buffer.includes("}")) {
+            const startIndex = buffer.indexOf("{")
+            const endIndex = buffer.indexOf("}", startIndex) + 1
+
+            if (endIndex > startIndex) {
+              try {
+                // Try to parse this as JSON
+                const jsonStr = buffer.substring(startIndex, endIndex)
+                const data = JSON.parse(jsonStr)
+
+                // Update the message content based on what we received
+                if (data.chunk) {
+                  fullText += data.chunk
+                  setStreamingMessage(fullText)
+                }
+
+                if (data.done && data.fullText) {
+                  finalText = data.fullText
+                  setStreamingMessage(finalText)
+                }
+
+                // Remove the processed part from the buffer
+                buffer = buffer.substring(endIndex)
+              } catch (e) {
+                // If parsing fails, skip this character and try again
+                buffer = buffer.substring(startIndex + 1)
+              }
+            } else {
+              // No complete JSON object found, wait for more data
+              break
+            }
+          }
+        }
+
+        // Add the final message when streaming is complete
+        const responseText = finalText || fullText
+        if (responseText.trim()) {
+          const aiMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: responseText,
+          }
+
+          // Clear streaming message first to avoid duplication
+          setStreamingMessage(null)
+
+          // Update messages state with the new AI message
+          const newMessages = [...updatedMessages, aiMessage]
+          setMessages(newMessages)
+
+          // REPLACE THIS SECTION that saves the conversation:
+          // Save the complete conversation including the AI response
+          // Save the complete conversation including the AI response
+          try {
+            if (chatId) {
+              // Update existing chat with all messages
+              await updateChat(chatId, { messages: newMessages })
+            } else {
+              // Create a new chat with all messages at once
+              const title = generateChatTitle(updatedMessages[0].content)
+              const newChat = await createChat(document.id, title, newMessages)
+              setChatId(newChat.id)
+            }
+
+            // Notify parent component that the chat was updated
+            if (onChatUpdated && chatId) {
+              onChatUpdated(chatId)
+            }
+          } catch (error) {
+            console.error("Error saving chat:", error)
+            toast({
+              title: "Error",
+              description: "Failed to save chat",
+              variant: "destructive",
+            })
+          }
+        }
+      } catch (streamError) {
+        console.error("Error processing stream:", streamError)
+
+        // If we have partial content, still show it
+        if (fullText.trim()) {
+          const aiMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: fullText + "\n\n[Error: Message was cut off due to a technical issue]",
+          }
+          setStreamingMessage(null)
+
+          const newMessages = [...updatedMessages, aiMessage]
+          setMessages(newMessages)
+
+          // Save the complete conversation including the partial AI response
+          if (chatId) {
+            await updateChat(chatId, { messages: newMessages })
+
+            // Notify parent component that the chat was updated
+            if (onChatUpdated) {
+              onChatUpdated(chatId)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      // Ignore abort errors
+      if (error instanceof DOMException && error.name === "AbortError") {
+        console.log("Request was aborted")
+        return
+      }
+
+      console.error("Error sending message:", error)
+
+      // Add an error message from the assistant to the chat
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content:
+          "I'm sorry, I encountered an error processing your request. Please try refreshing the page or contact support if the issue persists.",
+      }
+
+      // Clear streaming message first
+      setStreamingMessage(null)
+
+      // Add the error message to the chat
+      const newMessages = [...updatedMessages, errorMessage]
+      setMessages(newMessages)
+
+      // REPLACE THIS SECTION:
+      // Save the error message to the chat history
+      try {
+        if (chatId) {
+          // Update existing chat with all messages
+          await updateChat(chatId, { messages: newMessages })
+        } else {
+          // Create a new chat with all messages at once
+          const title = generateChatTitle(updatedMessages[0].content)
+          const newChat = await createChat(document.id, title, newMessages)
+          setChatId(newChat.id)
+        }
+
+        // Notify parent component that the chat was updated
+        if (onChatUpdated && chatId) {
+          onChatUpdated(chatId)
+        }
+      } catch (saveError) {
+        console.error("Error saving chat with error message:", saveError)
+      }
+
+      // Also show toast notification
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to get response from AI",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+      setStreamingMessage(null)
+      abortControllerRef.current = null
+    }
+  }
 
   // Handle adding a web source
   const handleAddWebSource = (e?: React.FormEvent) => {
@@ -488,6 +631,7 @@ const handleSendMessage = async (e: React.FormEvent) => {
               className={`p-3 rounded-lg mb-4 ${message.role === "user" ? "bg-[#1a1a1a] ml-8" : "bg-[#111] mr-8"}`}
             >
               {message.content}
+              {message.role === "assistant" && <MessageActions messageId={message.id} content={message.content} />}
             </div>
           ))}
 
@@ -539,3 +683,4 @@ const handleSendMessage = async (e: React.FormEvent) => {
     </div>
   )
 }
+
