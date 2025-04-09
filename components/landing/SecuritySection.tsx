@@ -9,10 +9,12 @@ type SecurityFeatureProps = {
 function SecurityFeature({ icon, title, description }: SecurityFeatureProps) {
   return (
     <div className="flex items-start">
-      <div className="flex-shrink-0 mr-3 mt-1">{icon}</div>
+      <div className="flex-shrink-0 mr-3 mt-1 rounded-full p-2 bg-[#222] w-10 h-10 flex items-center justify-center">
+        {icon}
+      </div>
       <div>
-        <h3 className="text-lg font-semibold mb-1">{title}</h3>
-        <p className="text-gray-600 text-sm">{description}</p>
+        <h3 className="text-base font-semibold mb-1 text-white">{title}</h3>
+        <p className="text-gray-400 text-sm">{description}</p>
       </div>
     </div>
   )
@@ -24,8 +26,8 @@ export default function SecuritySection() {
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
+          width="18"
+          height="18"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -45,8 +47,8 @@ export default function SecuritySection() {
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
+          width="18"
+          height="18"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -72,8 +74,8 @@ export default function SecuritySection() {
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
+          width="18"
+          height="18"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -93,8 +95,8 @@ export default function SecuritySection() {
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
+          width="18"
+          height="18"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -116,10 +118,10 @@ export default function SecuritySection() {
   ]
 
   return (
-    <section className="py-20 px-6 md:px-10 lg:px-20 bg-white border-t border-gray-100">
+    <section className="py-20 px-6 md:px-8 bg-black">
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16">
-        <div>
-          <h2 className="text-2xl md:text-3xl font-bold mb-8">Enterprise-Grade Security</h2>
+        <div className="bg-[#111] rounded-xl p-8 shadow-[0_0_20px_rgba(0,0,0,0.5)] hover:shadow-[0_0_25px_rgba(255,255,255,0.05)] transition-all duration-300">
+          <h2 className="text-2xl md:text-3xl font-bold mb-8 text-white">Enterprise-Grade Security</h2>
           <div className="space-y-8">
             {securityFeatures.map((feature, index) => (
               <SecurityFeature
@@ -132,8 +134,8 @@ export default function SecuritySection() {
           </div>
         </div>
 
-        <div>
-          <h2 className="text-2xl md:text-3xl font-bold mb-8">Compliance Ready</h2>
+        <div className="bg-[#111] rounded-xl p-8 shadow-[0_0_20px_rgba(0,0,0,0.5)] hover:shadow-[0_0_25px_rgba(255,255,255,0.05)] transition-all duration-300">
+          <h2 className="text-2xl md:text-3xl font-bold mb-8 text-white">Compliance Ready</h2>
           <div className="space-y-8">
             {complianceFeatures.map((feature, index) => (
               <SecurityFeature
@@ -149,4 +151,3 @@ export default function SecuritySection() {
     </section>
   )
 }
-

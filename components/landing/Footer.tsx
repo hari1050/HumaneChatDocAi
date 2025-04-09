@@ -5,14 +5,14 @@ export default function Footer() {
     <section className="bg-black py-20 px-6 md:px-10 lg:px-20">
       <div className="max-w-7xl mx-auto">
         <div className="text-center">
-          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4">Ready to Experience Humane?</h2>
-          <p className="text-gray-400 text-xl mb-8">
-            Join thousands of writers who are already experiencing the power of AI-assisted writing at gethumane.app
+          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4">Ready to Experience WriticaAI?</h2>
+          <p className="text-gray-400 text-lg mb-8">
+            Join thousands of writers who are already experiencing the power of AI-assisted writing at getwritica.app.
           </p>
 
           <Link
             href="/sign-up"
-            className="inline-flex items-center px-8 py-3 rounded-full bg-gradient-to-br from-[#ff3333] via-[#ff3333] to-[#222] text-white font-semibold text-lg hover:opacity-90 transition-opacity"
+            className="inline-flex items-center px-8 py-3 rounded-full bg-white text-black font-semibold text-lg hover:bg-white/90 transition-opacity"
           >
             Start Writing <span className="ml-2">→</span>
           </Link>
@@ -29,11 +29,10 @@ export default function Footer() {
                 strokeLinejoin="round"
               />
             </svg>
-            <span>© 2025 Humane. All rights reserved.</span>
+            <span>© 2025 WriticaAI. All rights reserved.</span>
           </div>
 
           <div className="flex items-center gap-4">
-            <span>Created by Vee</span>
             <Link href="#" className="hover:text-white transition-colors">
               Terms
             </Link>
@@ -46,4 +45,3 @@ export default function Footer() {
     </section>
   )
 }
-

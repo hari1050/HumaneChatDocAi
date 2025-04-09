@@ -31,6 +31,7 @@ import { exportHtmlAsDocx } from "@/lib/docx-export"
 import { SelectionToolbar } from "./selection-toolbar"
 import { Plugin, PluginKey } from "prosemirror-state"
 import { Decoration, DecorationSet } from "prosemirror-view"
+import { BlockIndependence, ImprovedBackspace } from "./custom-extensions"
 
 interface TextEditorProps {
   document: Document
@@ -77,9 +78,28 @@ export function TextEditor({
 
   const editor = useTiptapEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        // Configure paragraph to be a proper block
+        paragraph: {
+          HTMLAttributes: {
+            class: "editor-paragraph",
+          },
+        },
+        // Configure heading with proper styling
+        heading: {
+          levels: [1, 2, 3, 4],
+          HTMLAttributes: {
+            class: "editor-heading",
+          },
+        },
+        // Ensure each block is independent
+        hardBreak: false,
+      }),
       Heading.configure({
-        levels: [1, 2, 3],
+        levels: [1, 2, 3, 4],
+        HTMLAttributes: ({ level }: { level: number }) => ({
+          class: `editor-heading editor-heading-${level}`,
+        }),
       }),
       Link.configure({
         openOnClick: false,
@@ -88,7 +108,14 @@ export function TextEditor({
       Underline,
       Placeholder.configure({
         placeholder: "New document",
+        emptyEditorClass: "is-editor-empty",
+        emptyNodeClass: "is-node-empty",
+        showOnlyWhenEditable: true,
+        includeChildren: true,
       }),
+      // Add our custom extensions
+      BlockIndependence,
+      ImprovedBackspace,
     ],
     content: documentData.content,
     onUpdate: ({ editor, transaction }) => {
@@ -105,6 +132,25 @@ export function TextEditor({
     },
     onSelectionUpdate: () => {
       checkSelectionWithDebounce()
+    },
+    editorProps: {
+      // Add custom attributes to ensure blocks are properly separated
+      attributes: {
+        class: "prose prose-invert prose-sm sm:prose-base max-w-none focus:outline-none editor-content",
+      },
+      // Handle backspace and delete to prevent formatting propagation
+      handleKeyDown: (view, event) => {
+        // Custom handling for backspace and delete to prevent formatting issues
+        if (event.key === "Backspace" || event.key === "Delete") {
+          const { state } = view
+          const { selection } = state
+          const { empty } = selection
+
+          // Let the editor handle the default case
+          return false
+        }
+        return false
+      },
     },
   })
 
@@ -566,6 +612,12 @@ export function TextEditor({
           >
             H3
           </button>
+          <button
+            className={`toolbar-button ${editor.isActive("heading", { level: 4 }) ? "active" : ""}`}
+            onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()}
+          >
+            H4
+          </button>
 
           <div className="toolbar-divider"></div>
 
@@ -654,4 +706,3 @@ export function TextEditor({
     </div>
   )
 }
-

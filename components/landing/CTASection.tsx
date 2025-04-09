@@ -6,11 +6,11 @@ export default function CTASection() {
     <section className="py-16 px-6 md:px-10 lg:px-20 bg-black text-white">
       <div className="max-w-7xl mx-auto text-center">
         <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to Transform Your Documentation?</h2>
-        <p className="text-gray-400 max-w-2xl mx-auto mb-8">
-          Join thousands of writers who are already using Humane to streamline their documentation process.
+        <p className="text-gray-400 max-w-2xl mx-auto mb-8 text-sm">
+          Join thousands of writers who are already using WriticaAI to streamline their documentation process.
         </p>
         <Link href="/sign-up">
-          <Button className="bg-gradient-to-br from-[#ff3333] via-[#ff3333] to-[#222] hover:opacity-90 text-white px-6 py-6 h-auto font-medium">
+          <Button className="bg-white hover:bg-white/90 text-black px-6 py-6 h-auto font-medium border-0">
             Get Started Free
           </Button>
         </Link>
@@ -18,4 +18,3 @@ export default function CTASection() {
     </section>
   )
 }
-
