@@ -77,9 +77,9 @@ export default function HeroSection() {
   }
 
   const originalText =
-    "The future of writing is here. Lucid enables writers to produce high-quality content faster than ever before."
+    "The future of writing is here. WrticaAI enables writers to produce high-quality content faster than ever before."
   const improvedText =
-    "The revolution in writing has arrived! Lucid empowers writers to craft compelling, high-quality content with unprecedented speed and efficiency."
+    "The revolution in writing has arrived! WrticaAI empowers writers to craft compelling, high-quality content with unprecedented speed and efficiency."
 
   if (!mounted) return null
 
@@ -108,7 +108,7 @@ export default function HeroSection() {
 
               <p className="text-zinc-500 text-base md:text-lg max-w-xl mt-6">
                 The constant switching between research, AI tools, and your document is killing your flow.{" "}
-                <span className="text-white font-medium">Lucid brings everything into one seamless space.</span> When
+                <span className="text-white font-medium">WrticaAI brings everything into one seamless space.</span> When
                 writing is uninterrupted, creativity flourishes.
               </p>
             </motion.div>
