@@ -22,6 +22,35 @@ export interface ChatRequest {
   }[]
 }
 
+// Helper to determine if a message is likely requesting content generation
+function isContentRequest(message: string): boolean {
+  const contentRequestPatterns = [
+    /write (me |a |an )?(blog|summary|article|essay|report|content|overview|paragraph|description|outline)/i,
+    /create (me |a |an )?(blog|summary|article|essay|report|content|overview|paragraph|description|outline)/i,
+    /generate (me |a |an )?(blog|summary|article|essay|report|content|overview|paragraph|description|outline)/i,
+    /give me (a |an )?(blog|summary|article|essay|report|content|overview|paragraph|description|outline)/i,
+    /summary of/i,
+    /summarize/i,
+    /draft (a|an)/i,
+    /outline/i,
+    /describe/i,
+  ]
+  
+  return contentRequestPatterns.some(pattern => pattern.test(message))
+}
+
+// Helper function to ensure content has proper HTML formatting
+function ensureHTMLFormat(text: string): string {
+  // Check if the text already has HTML paragraphs
+  if (text.trim().startsWith("<p>")) {
+    return text;
+  }
+  
+  // Split by double newlines and wrap each in paragraph tags
+  const paragraphs = text.split(/\n\n+/);
+  return paragraphs.map(para => `<p>${para.trim()}</p>`).join("");
+}
+
 export async function POST(req: NextRequest) {
   try {
     // Get the Perplexity API key from environment variables
@@ -45,6 +74,10 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // Determine if this is a content generation request
+    const lastUserMessage = messages[messages.length - 1].content
+    const isGeneratingContent = isContentRequest(lastUserMessage)
+
     // Build the system prompt with context
     let systemPrompt =
       "You are an AI writing assistant integrated into a document editor called WriteX. Your primary role is to help users with their writing tasks. NEVER respond with generic information about greetings or words. Instead, always:\n\n" +
@@ -52,7 +85,16 @@ export async function POST(req: NextRequest) {
       "2. Offer specific help related to the document content when available\n" +
       "3. Suggest ways you can assist with writing, editing, brainstorming, or research\n" +
       "4. Keep responses focused on helping improve the document\n\n" +
+      "Format your responses with proper HTML paragraph tags (<p>) for each paragraph and use appropriate HTML formatting for other elements. Do not use Markdown formatting.\n\n" +
       "If a user sends a simple greeting like 'hi' or 'hello', respond by introducing yourself as the WriteX AI assistant and asking how you can help with their document."
+
+    // Add response format instructions based on the request type
+    if (isGeneratingContent) {
+      systemPrompt += "\n\nIMPORTANT FORMATTING INSTRUCTIONS:\n" +
+        "You are responding to a content generation request. Format your response with proper HTML paragraph tags (<p>) and other HTML formatting as needed. " +
+        "Your first paragraph should be a brief introduction to the content, explaining what you're creating. " +
+        "The rest should be the full content with proper HTML formatting."
+    }
 
     // Add document context if available
     if (documentContext) {
@@ -249,11 +291,20 @@ export async function POST(req: NextRequest) {
                       const textChunk = json.choices[0].delta.content
                       fullText += textChunk
 
-                      // Send the chunk to the client - just send the new chunk, not the full text
+                      // Format the raw text chunk for HTML display
+                      let formattedChunk = textChunk
+                          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>') // Bold
+                          .replace(/\*([^*]+)\*/g, '<em>$1</em>') // Italic
+                          .replace(/^#\s+([^#]+)$/m, '<h1>$1</h1>') // H1
+                          .replace(/^##\s+([^#]+)$/m, '<h2>$1</h2>') // H2
+                          .replace(/^###\s+([^#]+)$/m, '<h3>$1</h3>') // H3
+                          .replace(/^-\s+(.+)$/m, '• $1') // List items
+
+                      // Send the chunk to the client
                       controller.enqueue(
                         encoder.encode(
                           JSON.stringify({
-                            chunk: textChunk,
+                            chunk: formattedChunk,
                           }),
                         ),
                       )
@@ -273,16 +324,57 @@ export async function POST(req: NextRequest) {
             buffer = processedBuffer
           }
 
-          // Send a final message with the complete text
-          controller.enqueue(
-            encoder.encode(
-              JSON.stringify({
-                done: true,
-                fullText,
-                webSourcesProcessed: webSources ? webSources.length : 0,
-              }),
-            ),
-          )
+          // Format the final response based on request type
+          let formattedHTML = ensureHTMLFormat(fullText);
+          
+          if (isGeneratingContent) {
+            // For content generation, extract the first paragraph as introduction and the rest as content
+            const paragraphs = formattedHTML.match(/<p>.*?<\/p>/);
+            
+            let analysis = "";
+            let editContent = "";
+            
+            if (paragraphs && paragraphs.length > 0) {
+              // First paragraph as analysis
+              analysis = paragraphs[0];
+              
+              // All paragraphs as edit content
+              editContent = formattedHTML;
+            } else {
+              // Fallback if no paragraphs found
+              analysis = `<p>I've created the content you requested.</p>`;
+              editContent = formattedHTML;
+            }
+            
+            // Send the final structured response for content generation
+            controller.enqueue(
+              encoder.encode(
+                JSON.stringify({
+                  done: true,
+                  analysis: analysis,
+                  edit: {
+                    type: "replace",
+                    content: editContent,
+                    range: { from: 0, to: 2 },
+                    placement: "in_place"
+                  },
+                  webSourcesProcessed: webSources ? webSources.length : 0,
+                }),
+              ),
+            );
+          } else {
+            // For general questions/greetings, just include the analysis field
+            controller.enqueue(
+              encoder.encode(
+                JSON.stringify({
+                  done: true,
+                  analysis: formattedHTML,
+                  webSourcesProcessed: webSources ? webSources.length : 0,
+                }),
+              ),
+            );
+          }
+          
           controller.close()
         } catch (error) {
           console.error("Error in streaming response:", error)
@@ -315,4 +407,3 @@ export async function POST(req: NextRequest) {
     })
   }
 }
-

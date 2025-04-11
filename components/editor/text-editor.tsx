@@ -400,7 +400,7 @@ export function TextEditor({
       } finally {
         setIsSaving(false)
       }
-    }, 10000) // 10 seconds debounce
+    }, 1500) // 10 seconds debounce
   }
 
   // Handle document download

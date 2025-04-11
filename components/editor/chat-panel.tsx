@@ -11,6 +11,8 @@ import { useToast } from "@/hooks/use-toast"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MessageActions } from "./message-actions"
 import { createChat, updateChat, generateChatTitle } from "@/lib/chat-service-client"
+import DOMPurify from 'dompurify';
+
 
 type Message = {
   id: string
@@ -629,8 +631,9 @@ export function ChatPanel({
             <div
               key={message.id}
               className={`p-3 rounded-lg mb-4 ${message.role === "user" ? "bg-[#1a1a1a] ml-8" : "bg-[#111] mr-8"}`}
+              style={{ whiteSpace: 'pre-wrap' }} // Add this line
             >
-              {message.content}
+              <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(message.content) }} />
               {message.role === "assistant" && <MessageActions messageId={message.id} content={message.content} />}
             </div>
           ))}
@@ -638,7 +641,10 @@ export function ChatPanel({
           {/* Only show streaming message if we're actively loading */}
           {isLoading && streamingMessage !== null && (
             <div className="bg-[#111] p-3 rounded-lg mb-4 mr-8">
-              {streamingMessage}
+              <div 
+                className="message-content"
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(streamingMessage) }}
+              />
               <span className="inline-block w-2 h-4 ml-1 bg-white animate-pulse"></span>
             </div>
           )}
