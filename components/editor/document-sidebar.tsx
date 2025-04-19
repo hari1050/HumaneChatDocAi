@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { Button } from "@/components/ui/button"
-import { FileIcon, Settings, LogOut, Plus, ChevronLeft, X } from "lucide-react"
+import { FileIcon, Settings, LogOut, Plus, ChevronLeft, X, Gauge } from "lucide-react"
 import type { Document } from "./editor-container"
 import { SignOutButton } from "@clerk/nextjs"
 import {
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useState } from "react"
 import { ResizeHandle } from "@/components/ui/resize-handle"
+import Link from "next/link"
 
 interface DocumentSidebarProps {
   documents: Document[]
@@ -123,6 +124,13 @@ export function DocumentSidebar({
       </div>
 
       <div className="mt-auto border-t border-[#2a2a2a] py-2">
+        <Link
+          href="/dashboard/subscription"
+          className="flex items-center px-3 py-2 w-full text-gray-400 hover:text-white transition-colors"
+        >
+          <Gauge className="h-3 w-3 mr-2" />
+          <span className="text-xs">Subscription</span>
+        </Link>
         <button className="flex items-center px-3 py-2 w-full text-gray-400 hover:text-white transition-colors">
           <Settings className="h-3 w-3 mr-2" />
           <span className="text-xs">Settings</span>
@@ -159,4 +167,3 @@ export function DocumentSidebar({
     </div>
   )
 }
-

@@ -36,13 +36,19 @@ export async function createDocument(title?: string, content?: string): Promise<
 
   if (!response.ok) {
     const error = await response.json()
+
+    // Check if this is a limit reached error
+    if (error.limitReached) {
+      throw new Error(`Feature limit reached: ${error.message}`)
+    }
+
     throw new Error(error.error || "Failed to create document")
   }
 
   return response.json()
 }
 
-// Update adocument
+// Update a document
 export async function updateDocument(id: string, updates: Partial<Document>): Promise<Document> {
   const response = await fetch(`/api/documents/${id}`, {
     method: "PATCH",
@@ -71,4 +77,3 @@ export async function deleteDocument(id: string): Promise<void> {
     throw new Error(error.error || "Failed to delete document")
   }
 }
-

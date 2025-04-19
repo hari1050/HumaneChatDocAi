@@ -2,23 +2,17 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { CheckIcon, Loader2 } from "lucide-react"
+import { Check, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
+import { Badge } from "@/components/ui/badge"
 
 export default function PricingSection() {
   const router = useRouter()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
 
-  const features = [
-    "Full access to all features",
-    "Priority onboarding support",
-    "Unlimited team members",
-    "Early adopter benefits",
-  ]
-
-  const handleSubscribe = async () => {
+  const handleSubscribe = async (planType: string) => {
     setIsLoading(true)
 
     try {
@@ -48,6 +42,44 @@ export default function PricingSection() {
     }
   }
 
+  // Define the plans with the same structure as the subscription page
+  const plans = [
+    {
+      name: "free",
+      title: "Free",
+      price: 0,
+      description: "Basic features for personal use",
+      features: ["5 Documents", "25 Chat Queries per month", "5 Research Queries per month", "Basic AI Models"],
+    },
+    {
+      name: "pro",
+      title: "Pro",
+      price: 29,
+      description: "Advanced features for professionals",
+      highlighted: true,
+      features: [
+        "100 Documents",
+        "150 Chat Queries per month",
+        "15 Research Queries per month",
+        "Priority Support",
+        "Advanced AI Models",
+      ],
+    },
+    {
+      name: "advanced",
+      title: "Advanced",
+      price: 79,
+      description: "Enterprise-grade features for teams",
+      features: [
+        "Unlimited Documents",
+        "500 Chat Queries per month",
+        "50 Research Queries per month",
+        "Priority Support",
+        "Advanced AI Models",
+      ],
+    },
+  ]
+
   return (
     <section className="bg-black py-20 px-6 md:px-10 lg:px-20">
       <div className="max-w-7xl mx-auto">
@@ -56,19 +88,39 @@ export default function PricingSection() {
         </h2>
         <p className="text-gray-400 text-center text-lg mb-16">Choose the plan that's right for you</p>
 
-        <div className="flex justify-center">
-          <div className="bg-[#111] rounded-xl p-8 md:p-12 w-full max-w-lg shadow-[0_0_20px_rgba(0,0,0,0.5)] hover:shadow-[0_0_25px_rgba(255,255,255,0.05)] transition-all duration-300">
-            <div className="text-center">
-              <h3 className="text-2xl font-bold text-white mb-2">Beta Access</h3>
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <span className="text-4xl font-bold text-white">$29</span>
-                <span className="text-gray-400">/month</span>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {plans.map((plan) => (
+            <div
+              key={plan.name}
+              className={`bg-[#111] rounded-xl p-8 shadow-[0_0_20px_rgba(0,0,0,0.5)] hover:shadow-[0_0_25px_rgba(255,255,255,0.05)] transition-all duration-300 flex flex-col ${
+                plan.highlighted ? "border border-primary" : ""
+              }`}
+            >
+              <div className="mb-4 flex justify-between items-start">
+                <div>
+                  <h3 className="text-xl font-bold text-white">{plan.title}</h3>
+                  <p className="text-gray-400 text-sm mt-1">{plan.description}</p>
+                </div>
+                {plan.highlighted && <Badge className="bg-primary text-primary-foreground">Popular</Badge>}
               </div>
-              <p className="text-gray-400 mb-6 text-sm">3-day free trial, cancel anytime</p>
+
+              <div className="mb-6">
+                <span className="text-3xl font-bold text-white">${plan.price}</span>
+                {plan.price > 0 && <span className="text-gray-400 ml-1">/month</span>}
+              </div>
+
+              <ul className="space-y-3 mb-8 flex-grow">
+                {plan.features.map((feature, i) => (
+                  <li key={i} className="flex items-start">
+                    <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                    <span className="text-gray-300 text-sm">{feature}</span>
+                  </li>
+                ))}
+              </ul>
 
               <Button
-                className="w-full mb-8 bg-white text-black hover:bg-white/90 border-0"
-                onClick={handleSubscribe}
+                className={`w-full ${plan.name === "free" ? "bg-white text-black hover:bg-white/90" : "bg-white text-black hover:bg-white/90"}`}
+                onClick={() => handleSubscribe(plan.name)}
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -76,23 +128,14 @@ export default function PricingSection() {
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Processing...
                   </>
+                ) : plan.name === "free" ? (
+                  "Get Started"
                 ) : (
                   "Start Free Trial"
                 )}
               </Button>
             </div>
-
-            <div className="space-y-4">
-              {features.map((feature, index) => (
-                <div key={index} className="flex items-center gap-3">
-                  <div className="flex-shrink-0">
-                    <CheckIcon className="w-5 h-5 text-blue-500" />
-                  </div>
-                  <span className="text-gray-300 text-sm">{feature}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </section>

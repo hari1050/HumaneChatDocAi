@@ -1,10 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { auth } from "@clerk/nextjs/server"
+import { checkFeatureLimit, trackFeatureUsage } from "@/middleware/subscription-middleware"
 
 // GET all documents for the current user
 export async function GET(req: NextRequest) {
-  const { userId } = await auth()  // Add await here
+  const { userId } = await auth()
 
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -28,10 +29,16 @@ export async function GET(req: NextRequest) {
 
 // POST create a new document
 export async function POST(req: NextRequest) {
-  const { userId } = await auth()  // Add await here too
+  const { userId } = await auth()
 
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Check if user has reached document limit
+  const limitResponse = await checkFeatureLimit(req, "documents")
+  if (limitResponse) {
+    return limitResponse
   }
 
   try {
@@ -44,6 +51,9 @@ export async function POST(req: NextRequest) {
       .select()
 
     if (error) throw error
+
+    // Track document creation
+    await trackFeatureUsage(req, "documents")
 
     return NextResponse.json(data[0])
   } catch (error) {

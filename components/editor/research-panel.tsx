@@ -4,11 +4,12 @@ import type React from "react"
 import { useState, useRef, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { BookOpen, Loader2, ExternalLink, XCircle, CheckCircle2 } from "lucide-react"
+import { BookOpen, Loader2, XCircle, CheckCircle2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { LimitWarning } from "@/components/subscription/limit-warning"
 
 type WebSource = {
   url: string
@@ -45,24 +46,24 @@ interface ResearchPanelProps {
 const PHASES = {
   INITIAL_SEARCH: {
     progress: 10,
-    title: "Initiating research"
+    title: "Initiating research",
   },
   SEARCHING: {
     progress: 25,
-    title: "Searching for relevant information"
+    title: "Searching for relevant information",
   },
   ANALYZING: {
     progress: 50,
-    title: "Analyzing findings"
+    title: "Analyzing findings",
   },
   SYNTHESIZING: {
     progress: 75,
-    title: "Preparing final analysis"
+    title: "Preparing final analysis",
   },
   COMPLETE: {
     progress: 100,
-    title: "Research complete"
-  }
+    title: "Research complete",
+  },
 }
 
 export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps) {
@@ -71,14 +72,18 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
   const [researchResult, setResearchResult] = useState<ResearchResult | null>(null)
   const [isResearching, setIsResearching] = useState(false)
   const [researchError, setResearchError] = useState("")
-  
+
+  // Subscription limit states
+  const [webSourceLimitReached, setWebSourceLimitReached] = useState(false)
+  const [researchLimitReached, setResearchLimitReached] = useState(false)
+
   // Streaming research progress state
   const [currentPhase, setCurrentPhase] = useState<keyof typeof PHASES | null>(null)
   const [progressValue, setProgressValue] = useState(0)
   const [progressMessage, setProgressMessage] = useState("")
   const [activities, setActivities] = useState<string[]>([])
   const abortControllerRef = useRef<AbortController | null>(null)
-  
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -94,6 +99,37 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
 
     if (!researchQuery.trim()) return
 
+    // Check if we've reached the research limit
+    try {
+      const limitResponse = await fetch("/api/subscription/check-limit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ feature: "research_queries", increment: true }),
+      })
+
+      if (!limitResponse.ok) {
+        const error = await limitResponse.json()
+
+        // Check if this is a limit reached error
+        if (error.limitReached) {
+          setResearchLimitReached(true)
+          throw new Error(`Feature limit reached: ${error.message}`)
+        }
+
+        throw new Error(error.error || "Failed to check limit")
+      }
+    } catch (error) {
+      console.error("Error checking research limit:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to check research limit",
+        variant: "destructive",
+      })
+      return
+    }
+
     // Reset states
     setIsResearching(true)
     setResearchResult(null)
@@ -102,7 +138,7 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
     setProgressValue(0)
     setProgressMessage("")
     setActivities([])
-    
+
     // Create a new AbortController for this request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
@@ -112,14 +148,14 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
     try {
       // Create the URL with the query
       const apiUrl = `/api/web-search?query=${encodeURIComponent(researchQuery)}`
-      
+
       // Make the fetch request with streaming response
       const response = await fetch(apiUrl, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
-        signal: abortControllerRef.current.signal
+        signal: abortControllerRef.current.signal,
       })
 
       if (!response.ok) {
@@ -138,44 +174,42 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
       // Function to process streaming data
       while (true) {
         const { done, value } = await reader.read()
-        
+
         if (done) {
           // End of stream
           break
         }
-        
+
         // Decode the chunk and add to buffer
         buffer += new TextDecoder().decode(value)
-        
+
         // Process complete lines in the buffer
-        while (buffer.includes('\n')) {
-          const lineEndIndex = buffer.indexOf('\n')
+        while (buffer.includes("\n")) {
+          const lineEndIndex = buffer.indexOf("\n")
           const line = buffer.substring(0, lineEndIndex).trim()
           buffer = buffer.substring(lineEndIndex + 1)
-          
+
           if (line) {
             try {
               const data = JSON.parse(line)
-              
+
               // Handle different message types
-              if (data.type === 'progress') {
+              if (data.type === "progress") {
                 // Update progress state
                 const phase = data.phase as keyof typeof PHASES
                 setCurrentPhase(phase)
                 setProgressValue(data.progress)
                 setProgressMessage(data.message)
-                
+
                 if (data.activity) {
                   // Add new activity at the beginning of the list
-                  setActivities(prev => [data.activity, ...prev])
+                  setActivities((prev) => [data.activity, ...prev])
                 }
-              } 
-              else if (data.type === 'result') {
+              } else if (data.type === "result") {
                 // Got the final result
                 setResearchResult(data)
                 setIsResearching(false)
-              } 
-              else if (data.type === 'error') {
+              } else if (data.type === "error") {
                 throw new Error(data.error || "Research error")
               }
             } catch (parseError) {
@@ -184,20 +218,19 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
           }
         }
       }
-      
     } catch (error) {
       console.error("Error performing research:", error)
-      
+
       // Ignore abort errors
       if (error instanceof DOMException && error.name === "AbortError") {
         console.log("Research request was aborted")
         return
       }
-      
+
       setResearchError(error instanceof Error ? error.message : "Failed to perform research")
       setIsResearching(false)
       setCurrentPhase(null)
-      
+
       toast({
         title: "Research Error",
         description: error instanceof Error ? error.message : "Failed to perform detailed research",
@@ -207,7 +240,7 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
   }
 
   // Handle adding a source
-  const handleAddSource = (url: string) => {
+  const handleAddSource = async (url: string) => {
     if (webSources.some((source) => source.url === url)) {
       toast({
         title: "Already Added",
@@ -216,18 +249,48 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
       return
     }
 
-    setWebSources((prev) => [...prev, { url }])
+    try {
+      // Check if adding another web source would exceed the limit
+      const response = await fetch("/api/subscription/check-limit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ feature: "web_sources", currentCount: webSources.length }),
+      })
 
-    toast({
-      title: "Source Added",
-      description: "The web source has been added to your context",
-    })
+      if (!response.ok) {
+        const error = await response.json()
+
+        // Check if this is a limit reached error
+        if (error.limitReached) {
+          setWebSourceLimitReached(true)
+          throw new Error(`Feature limit reached: ${error.message}`)
+        }
+
+        throw new Error(error.error || "Failed to check limit")
+      }
+
+      setWebSources((prev) => [...prev, { url }])
+
+      toast({
+        title: "Source Added",
+        description: "The web source has been added to your context",
+      })
+    } catch (error) {
+      console.error("Error adding web source:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to add web source",
+        variant: "destructive",
+      })
+    }
   }
 
   // Format citation reference in text
   const formatCitationText = (text: string) => {
     if (!researchResult) return text
-    
+
     // Replace citation markers [1], [2], etc. with linked citations
     return text.replace(/\[(\d+)\]/g, (match, number) => {
       const url = researchResult.citationMap[number]
@@ -254,6 +317,19 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Subscription limit warnings */}
+      {webSourceLimitReached && (
+        <div className="p-4">
+          <LimitWarning feature="web_sources" onClose={() => setWebSourceLimitReached(false)} />
+        </div>
+      )}
+
+      {researchLimitReached && (
+        <div className="p-4">
+          <LimitWarning feature="research_queries" onClose={() => setResearchLimitReached(false)} />
+        </div>
+      )}
+
       {/* Result section - appears above the search input */}
       <div className="flex-1 overflow-y-auto p-4">
         {isResearching ? (
@@ -269,13 +345,13 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
               </CardHeader>
               <CardContent className="space-y-4">
                 <Progress value={progressValue} className="h-2 bg-[#1a1a1a]" />
-                
+
                 <div className="mt-4">
                   <h3 className="text-base font-medium mb-2">
                     {currentPhase && PHASES[currentPhase].title}
                     {currentPhase === "SEARCHING" && ` for "${researchQuery}"`}
                   </h3>
-                  
+
                   <div className="space-y-1 mt-4">
                     <div className="flex justify-between text-sm text-muted-foreground mb-2">
                       <span>Activity Log</span>
@@ -308,7 +384,7 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
                 </Badge>
               </div>
             )}
-            
+
             {/* Research content */}
             <Card className="bg-[#0a0a0a] border-[#2a2a2a]">
               <CardHeader className="pb-2">
@@ -319,18 +395,16 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
                   {researchResult.sections.map((section, sectionIndex) => (
                     <div key={sectionIndex} className="mb-6">
                       {section.title !== "Summary" && (
-                        <h2 className="text-lg font-semibold border-b border-[#2a2a2a] pb-1 mb-3">
-                          {section.title}
-                        </h2>
+                        <h2 className="text-lg font-semibold border-b border-[#2a2a2a] pb-1 mb-3">{section.title}</h2>
                       )}
-                      
+
                       {section.content.map((item, itemIndex) => (
                         <div key={itemIndex} className="mb-2">
-                          {item.type === 'subheader' ? (
+                          {item.type === "subheader" ? (
                             <h3 className="text-base font-medium mt-4 mb-2">{item.text}</h3>
                           ) : (
-                            <p 
-                              className="text-sm mb-3 leading-relaxed" 
+                            <p
+                              className="text-sm mb-3 leading-relaxed"
                               dangerouslySetInnerHTML={{ __html: formatCitationText(item.text) }}
                             />
                           )}
@@ -341,7 +415,7 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
                 </div>
               </CardContent>
             </Card>
-            
+
             {/* Citations */}
             {researchResult.citations && researchResult.citations.length > 0 && (
               <Card className="bg-[#0a0a0a] border-[#2a2a2a]">
@@ -386,7 +460,7 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
           </div>
         )}
       </div>
-      
+
       {/* Search input - fixed at the bottom */}
       <div className="p-4 border-t border-[#2a2a2a] bg-[#0a0a0a]">
         <form onSubmit={handleResearch} className="flex gap-2">
@@ -395,13 +469,13 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
             onChange={(e) => setResearchQuery(e.target.value)}
             placeholder="Research a topic (e.g., 'GTM strategies for startups')"
             className="h-10 bg-[#1a1a1a] border-none"
-            disabled={isResearching}
+            disabled={isResearching || researchLimitReached}
           />
           <Button
             type="submit"
             size="sm"
             className="h-10 px-4 bg-white text-black hover:bg-white/90"
-            disabled={!researchQuery.trim() || isResearching}
+            disabled={!researchQuery.trim() || isResearching || researchLimitReached}
           >
             {isResearching ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <BookOpen className="h-4 w-4 mr-2" />}
             Research

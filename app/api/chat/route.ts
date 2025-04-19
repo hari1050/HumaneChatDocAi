@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server"
 import { extractUrlContent } from "@/utils/urlContentExtractor"
+import { checkFeatureLimit, trackFeatureUsage } from "@/middleware/subscription-middleware"
 
 // Define the structure of a chat message
 export interface ChatMessage {
@@ -35,24 +36,30 @@ function isContentRequest(message: string): boolean {
     /outline/i,
     /describe/i,
   ]
-  
-  return contentRequestPatterns.some(pattern => pattern.test(message))
+
+  return contentRequestPatterns.some((pattern) => pattern.test(message))
 }
 
 // Helper function to ensure content has proper HTML formatting
 function ensureHTMLFormat(text: string): string {
   // Check if the text already has HTML paragraphs
   if (text.trim().startsWith("<p>")) {
-    return text;
+    return text
   }
-  
+
   // Split by double newlines and wrap each in paragraph tags
-  const paragraphs = text.split(/\n\n+/);
-  return paragraphs.map(para => `<p>${para.trim()}</p>`).join("");
+  const paragraphs = text.split(/\n\n+/)
+  return paragraphs.map((para) => `<p>${para.trim()}</p>`).join("")
 }
 
 export async function POST(req: NextRequest) {
   try {
+    // Check if user has reached chat query limit
+    const limitResponse = await checkFeatureLimit(req, "chat_queries")
+    if (limitResponse) {
+      return limitResponse
+    }
+
     // Get the Perplexity API key from environment variables
     const apiKey = process.env.PERPLEXITY_API_KEY
 
@@ -90,7 +97,8 @@ export async function POST(req: NextRequest) {
 
     // Add response format instructions based on the request type
     if (isGeneratingContent) {
-      systemPrompt += "\n\nIMPORTANT FORMATTING INSTRUCTIONS:\n" +
+      systemPrompt +=
+        "\n\nIMPORTANT FORMATTING INSTRUCTIONS:\n" +
         "You are responding to a content generation request. Format your response with proper HTML paragraph tags (<p>) and other HTML formatting as needed. " +
         "Your first paragraph should be a brief introduction to the content, explaining what you're creating. " +
         "The rest should be the full content with proper HTML formatting."
@@ -292,13 +300,13 @@ export async function POST(req: NextRequest) {
                       fullText += textChunk
 
                       // Format the raw text chunk for HTML display
-                      let formattedChunk = textChunk
-                          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>') // Bold
-                          .replace(/\*([^*]+)\*/g, '<em>$1</em>') // Italic
-                          .replace(/^#\s+([^#]+)$/m, '<h1>$1</h1>') // H1
-                          .replace(/^##\s+([^#]+)$/m, '<h2>$1</h2>') // H2
-                          .replace(/^###\s+([^#]+)$/m, '<h3>$1</h3>') // H3
-                          .replace(/^-\s+(.+)$/m, '• $1') // List items
+                      const formattedChunk = textChunk
+                        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>") // Bold
+                        .replace(/\*([^*]+)\*/g, "<em>$1</em>") // Italic
+                        .replace(/^#\s+([^#]+)$/m, "<h1>$1</h1>") // H1
+                        .replace(/^##\s+([^#]+)$/m, "<h2>$1</h2>") // H2
+                        .replace(/^###\s+([^#]+)$/m, "<h3>$1</h3>") // H3
+                        .replace(/^-\s+(.+)$/m, "• $1") // List items
 
                       // Send the chunk to the client
                       controller.enqueue(
@@ -325,27 +333,27 @@ export async function POST(req: NextRequest) {
           }
 
           // Format the final response based on request type
-          let formattedHTML = ensureHTMLFormat(fullText);
-          
+          const formattedHTML = ensureHTMLFormat(fullText)
+
           if (isGeneratingContent) {
             // For content generation, extract the first paragraph as introduction and the rest as content
-            const paragraphs = formattedHTML.match(/<p>.*?<\/p>/);
-            
-            let analysis = "";
-            let editContent = "";
-            
+            const paragraphs = formattedHTML.match(/<p>.*?<\/p>/)
+
+            let analysis = ""
+            let editContent = ""
+
             if (paragraphs && paragraphs.length > 0) {
               // First paragraph as analysis
-              analysis = paragraphs[0];
-              
+              analysis = paragraphs[0]
+
               // All paragraphs as edit content
-              editContent = formattedHTML;
+              editContent = formattedHTML
             } else {
               // Fallback if no paragraphs found
-              analysis = `<p>I've created the content you requested.</p>`;
-              editContent = formattedHTML;
+              analysis = `<p>I've created the content you requested.</p>`
+              editContent = formattedHTML
             }
-            
+
             // Send the final structured response for content generation
             controller.enqueue(
               encoder.encode(
@@ -356,12 +364,12 @@ export async function POST(req: NextRequest) {
                     type: "replace",
                     content: editContent,
                     range: { from: 0, to: 2 },
-                    placement: "in_place"
+                    placement: "in_place",
                   },
                   webSourcesProcessed: webSources ? webSources.length : 0,
                 }),
               ),
-            );
+            )
           } else {
             // For general questions/greetings, just include the analysis field
             controller.enqueue(
@@ -372,10 +380,13 @@ export async function POST(req: NextRequest) {
                   webSourcesProcessed: webSources ? webSources.length : 0,
                 }),
               ),
-            );
+            )
           }
-          
+
           controller.close()
+
+          // Track chat query usage after successful completion
+          await trackFeatureUsage(req, "chat_queries")
         } catch (error) {
           console.error("Error in streaming response:", error)
           controller.enqueue(

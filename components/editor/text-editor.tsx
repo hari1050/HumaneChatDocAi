@@ -32,6 +32,7 @@ import { SelectionToolbar } from "./selection-toolbar"
 import { Plugin, PluginKey } from "prosemirror-state"
 import { Decoration, DecorationSet } from "prosemirror-view"
 import { BlockIndependence, ImprovedBackspace } from "./custom-extensions"
+import { LimitWarning } from "../subscription/limit-warning"
 
 interface TextEditorProps {
   document: Document
@@ -61,6 +62,7 @@ export function TextEditor({
   const lastTitleRef = useRef(documentData.title)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [transformLimitReached, setTransformLimitReached] = useState(false)
 
   // Selection toolbar state
   const [showSelectionToolbar, setShowSelectionToolbar] = useState(false)
@@ -400,7 +402,7 @@ export function TextEditor({
       } finally {
         setIsSaving(false)
       }
-    }, 1500) // 10 seconds debounce
+    }, 10000) // 10 seconds debounce
   }
 
   // Handle document download
@@ -471,6 +473,13 @@ export function TextEditor({
 
       if (!response.ok) {
         const error = await response.json()
+
+        // Check if this is a limit reached error
+        if (error.limitReached) {
+          setTransformLimitReached(true)
+          throw new Error(`Feature limit reached: ${error.message}`)
+        }
+
         throw new Error(error.error || "Failed to transform text")
       }
 
@@ -691,6 +700,12 @@ export function TextEditor({
           editor={editor}
           className="prose prose-invert prose-sm sm:prose-base max-w-none focus:outline-none"
         />
+
+        {transformLimitReached && (
+          <div className="absolute bottom-4 right-4 left-4 z-50">
+            <LimitWarning feature="ai_transforms" onClose={() => setTransformLimitReached(false)} />
+          </div>
+        )}
 
         {showSelectionToolbar && (
           <SelectionToolbar

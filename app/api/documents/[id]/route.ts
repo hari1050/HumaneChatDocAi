@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { auth } from "@clerk/nextjs/server"
+import { decrementFeatureUsage } from "@/middleware/subscription-middleware"
 
 // GET a specific document
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const { data, error } = await supabase
       .from("documents")
       .select("*")
-      .eq("id", await params.id)
+      .eq("id", params.id)
       .eq("user_id", userId)
       .single()
 
@@ -52,7 +53,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const { data, error } = await supabase
       .from("documents")
       .update(updates)
-      .eq("id", await params.id)
+      .eq("id", params.id)
       .eq("user_id", userId)
       .select()
 
@@ -82,10 +83,12 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
     if (error) throw error
 
+    // Decrement document count when a document is deleted
+    await decrementFeatureUsage(req, "documents")
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error deleting document:", error)
     return NextResponse.json({ error: "Failed to delete document" }, { status: 500 })
   }
 }
-

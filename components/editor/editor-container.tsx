@@ -8,6 +8,8 @@ import { Loader2 } from "lucide-react"
 import { fetchDocuments, createDocument, updateDocument, deleteDocument } from "@/lib/document-service"
 import { useToast } from "@/hooks/use-toast"
 import { EditorProvider } from "@/context/editor-context"
+import { Button } from "@/components/ui/button"
+import Link from "next/link"
 
 export type Document = {
   id: string
@@ -25,6 +27,8 @@ export function EditorContainer() {
   const [showDocumentSidebar, setShowDocumentSidebar] = useState(true)
   const [showAssistantSidebar, setShowAssistantSidebar] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
+  const [limitReached, setLimitReached] = useState<string | null>(null)
+  const [showLimitWarning, setShowLimitWarning] = useState(false)
 
   // Fetch documents on component mount
   useEffect(() => {
@@ -67,11 +71,18 @@ export function EditorContainer() {
       })
     } catch (error) {
       console.error("Error creating document:", error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create document",
-        variant: "destructive",
-      })
+
+      // Check if this is a limit reached error
+      if (error instanceof Error && error.message.includes("limit reached")) {
+        setLimitReached("documents")
+        setShowLimitWarning(true)
+      } else {
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to create document",
+          variant: "destructive",
+        })
+      }
     }
   }
 
@@ -134,6 +145,35 @@ export function EditorContainer() {
     )
   }
 
+  if (showLimitWarning && limitReached) {
+    return (
+      <div className="p-6">
+        <div className="flex h-screen items-center justify-center bg-black">
+          <div className="text-center">
+            <h2 className="text-xl font-medium mb-4">Subscription Limit Reached</h2>
+            <p className="mb-4 text-muted-foreground">
+              You've reached your {limitReached.replace(/_/g, " ")} limit on your current plan.
+            </p>
+            <div className="flex gap-2 justify-center">
+              <Link href="/dashboard/subscription">
+                <Button className="px-4 py-2 bg-white text-black rounded hover:bg-white/90 transition-colors">
+                  Upgrade Plan
+                </Button>
+              </Link>
+              <Button
+                variant="outline"
+                onClick={() => setShowLimitWarning(false)}
+                className="px-4 py-2 border border-white/20 rounded hover:bg-white/10 transition-colors"
+              >
+                Continue with Limitations
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <EditorProvider>
       <div className="editor-container">
@@ -185,4 +225,3 @@ export function EditorContainer() {
     </EditorProvider>
   )
 }
-
