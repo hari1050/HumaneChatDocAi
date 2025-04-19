@@ -18,6 +18,7 @@ import {
 import { useState } from "react"
 import { ResizeHandle } from "@/components/ui/resize-handle"
 import Link from "next/link"
+import { SettingsDialog } from "./settings-dialog"
 
 interface DocumentSidebarProps {
   documents: Document[]
@@ -39,6 +40,7 @@ export function DocumentSidebar({
   const [documentToDelete, setDocumentToDelete] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(240)
   const [isDragging, setIsDragging] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
 
   const handleResize = (delta: number) => {
     setSidebarWidth((prev) => {
@@ -131,7 +133,10 @@ export function DocumentSidebar({
           <Gauge className="h-3 w-3 mr-2" />
           <span className="text-xs">Subscription</span>
         </Link>
-        <button className="flex items-center px-3 py-2 w-full text-gray-400 hover:text-white transition-colors">
+        <button
+          onClick={() => setShowSettings(true)}
+          className="flex items-center px-3 py-2 w-full text-gray-400 hover:text-white transition-colors"
+        >
           <Settings className="h-3 w-3 mr-2" />
           <span className="text-xs">Settings</span>
         </button>
@@ -142,6 +147,8 @@ export function DocumentSidebar({
           </button>
         </SignOutButton>
       </div>
+
+      <SettingsDialog open={showSettings} onOpenChange={setShowSettings} />
 
       <AlertDialog open={!!documentToDelete} onOpenChange={(open) => !open && setDocumentToDelete(null)}>
         <AlertDialogContent className="bg-background border border-[#1a1a1a]">

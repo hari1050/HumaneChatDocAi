@@ -460,10 +460,34 @@ body {
 .selection-toolbar {
   position: fixed; /* Change from absolute to fixed */
   z-index: 99999; /* Even higher z-index */
-  background-color: #111;
-  border: 1px solid #444; /* Make the border more visible */
-  border-radius: 9999px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); /* Stronger shadow for better visibility */
+  transition: all 0.2s ease;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Add a subtle pointer/arrow at the bottom of the toolbar */
+.selection-toolbar::after {
+  content: "";
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid rgba(51, 51, 51, 0.8);
+  pointer-events: none;
 }
 
 .selection-toolbar-button {
@@ -687,3 +711,74 @@ body {
   color: #888;
 }
 
+/* Editor block and heading styles */
+.editor-paragraph {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  position: relative;
+}
+
+.editor-heading {
+  position: relative;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  font-weight: bold;
+}
+
+.editor-heading-1 {
+  font-size: 2rem;
+  line-height: 1.2;
+}
+
+.editor-heading-2 {
+  font-size: 1.5rem;
+  line-height: 1.3;
+}
+
+.editor-heading-3 {
+  font-size: 1.25rem;
+  line-height: 1.4;
+}
+
+.editor-heading-4 {
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+
+/* Ensure blocks are properly separated */
+.ProseMirror p,
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3,
+.ProseMirror h4 {
+  position: relative;
+  margin: 0.5em 0;
+}
+
+/* Add visual indication of blocks on hover */
+.ProseMirror p:hover,
+.ProseMirror h1:hover,
+.ProseMirror h2:hover,
+.ProseMirror h3:hover,
+.ProseMirror h4:hover {
+  outline: 1px dashed rgba(255, 255, 255, 0.2);
+}
+
+/* Fix the issue with backspace and formatting propagation */
+.ProseMirror {
+  counter-reset: prosemirror-block;
+}
+
+.ProseMirror p,
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3,
+.ProseMirror h4 {
+  counter-increment: prosemirror-block;
+}
+
+/* Ensure each block maintains its own formatting */
+.ProseMirror [data-type="paragraph"],
+.ProseMirror [data-type="heading"] {
+  isolation: isolate;
+}

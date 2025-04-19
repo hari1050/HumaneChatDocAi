@@ -32,7 +32,7 @@ import { SelectionToolbar } from "./selection-toolbar"
 import { Plugin, PluginKey } from "prosemirror-state"
 import { Decoration, DecorationSet } from "prosemirror-view"
 import { BlockIndependence, ImprovedBackspace } from "./custom-extensions"
-import { LimitWarning } from "../subscription/limit-warning"
+import { LimitWarning } from "@/components/subscription/limit-warning"
 
 interface TextEditorProps {
   document: Document
@@ -77,6 +77,12 @@ export function TextEditor({
 
   // Create a unique class name for highlighting changes
   const changeHighlightClass = "editor-change-highlight"
+
+  // Add these new states inside the TextEditor component
+  const [showTransformInput, setShowTransformInput] = useState(false)
+  const [transformInput, setTransformInput] = useState("")
+  const [transformInputPosition, setTransformInputPosition] = useState({ x: 0, y: 0 })
+  const transformInputRef = useRef<HTMLInputElement>(null)
 
   const editor = useTiptapEditor({
     extensions: [
@@ -325,7 +331,7 @@ export function TextEditor({
           const middleX = (start.left + end.left) / 2
           setSelectionPosition({
             x: middleX,
-            y: start.top - 10, // Position it slightly above the top of the selection
+            y: start.top, // Position it right at the top of the selection
           })
 
           setShowSelectionToolbar(true)
@@ -505,12 +511,107 @@ export function TextEditor({
 
   // Handle adding selected text to chat
   const handleAddToChat = (text: string) => {
-    // This will be implemented later
-    toast({
-      title: "Added to chat",
-      description: "The selected text has been added to the chat",
-    })
+    // Get the assistant sidebar and find the chat input
+    const assistantSidebar = document.querySelector(".assistant-sidebar")
+    if (assistantSidebar) {
+      const chatInput = assistantSidebar.querySelector(".assistant-input-field") as HTMLInputElement
+      if (chatInput) {
+        // If there's already text in the input, add a space
+        if (chatInput.value && !chatInput.value.endsWith(" ")) {
+          chatInput.value += " "
+        }
+        // Add the selected text to the input
+        chatInput.value += text
+        // Focus the input
+        chatInput.focus()
+      }
+    }
     setShowSelectionToolbar(false)
+  }
+
+  // Add this effect to handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if editor is focused
+      if (!editor || !editor.isFocused) return
+
+      // Transform selection shortcut (Ctrl/Cmd + K)
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault()
+
+        const { from, to } = editor.state.selection
+        if (from !== to) {
+          const text = editor.state.doc.textBetween(from, to, " ")
+          if (text.trim()) {
+            // Update editor bounds
+            if (editorContentRef.current) {
+              setEditorBounds(editorContentRef.current.getBoundingClientRect())
+            }
+
+            setSelectedText(text)
+
+            // Get the position for the toolbar - use the selection's coordinates
+            const view = editor.view
+            const start = view.coordsAtPos(from)
+            const end = view.coordsAtPos(to)
+
+            // Position the toolbar above the middle of the selection
+            const middleX = (start.left + end.left) / 2
+            setSelectionPosition({
+              x: middleX,
+              y: start.top - 10, // Position it slightly above the top of the selection
+            })
+
+            // Show the selection toolbar and immediately activate transform mode
+            setShowSelectionToolbar(true)
+
+            // Use a small timeout to ensure the toolbar is rendered before we try to interact with it
+            setTimeout(() => {
+              const transformButton = document.querySelector(".selection-toolbar button")
+              if (transformButton) {
+                ;(transformButton as HTMLButtonElement).click()
+              }
+            }, 10)
+          }
+        }
+      }
+
+      // Add selection to chat shortcut (Ctrl/Cmd + L)
+      if ((e.ctrlKey || e.metaKey) && e.key === "l") {
+        e.preventDefault()
+
+        const { from, to } = editor.state.selection
+        if (from !== to) {
+          const text = editor.state.doc.textBetween(from, to, " ")
+          if (text.trim()) {
+            handleAddToChat(text)
+          }
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [editor])
+
+  // Add a function to handle transform input submission
+  const handleTransformInputSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!editor || !transformInput.trim()) {
+      setShowTransformInput(false)
+      return
+    }
+
+    const { from, to } = editor.state.selection
+    const text = editor.state.doc.textBetween(from, to, " ")
+
+    if (text.trim()) {
+      handleTransformText(text, transformInput)
+    }
+
+    setTransformInput("")
+    setShowTransformInput(false)
   }
 
   if (!editor) {
