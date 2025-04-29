@@ -11,8 +11,6 @@ import { useToast } from "@/hooks/use-toast"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MessageActions } from "./message-actions"
 import { createChat, updateChat, generateChatTitle } from "@/lib/chat-service-client"
-import DOMPurify from 'dompurify';
-
 
 type Message = {
   id: string
@@ -66,6 +64,16 @@ export function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const webSourceInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Auto-resize textarea based on content
+  const adjustTextareaHeight = () => {
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.style.height = "auto"
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 300)}px`
+    }
+  }
 
   // Update messages when initialMessages changes
   useEffect(() => {
@@ -76,6 +84,11 @@ export function ChatPanel({
   useEffect(() => {
     setChatId(currentChatId)
   }, [currentChatId])
+
+  // Adjust textarea height when input changes
+  useEffect(() => {
+    adjustTextareaHeight()
+  }, [input])
 
   // Scroll to bottom when messages change or when streaming
   useEffect(() => {
@@ -631,9 +644,8 @@ export function ChatPanel({
             <div
               key={message.id}
               className={`p-3 rounded-lg mb-4 ${message.role === "user" ? "bg-[#1a1a1a] ml-8" : "bg-[#111] mr-8"}`}
-              style={{ whiteSpace: 'pre-wrap' }} // Add this line
             >
-              <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(message.content) }} />
+              {message.content}
               {message.role === "assistant" && <MessageActions messageId={message.id} content={message.content} />}
             </div>
           ))}
@@ -641,10 +653,7 @@ export function ChatPanel({
           {/* Only show streaming message if we're actively loading */}
           {isLoading && streamingMessage !== null && (
             <div className="bg-[#111] p-3 rounded-lg mb-4 mr-8">
-              <div 
-                className="message-content"
-                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(streamingMessage) }}
-              />
+              {streamingMessage}
               <span className="inline-block w-2 h-4 ml-1 bg-white animate-pulse"></span>
             </div>
           )}
@@ -673,13 +682,26 @@ export function ChatPanel({
 
       <div className="assistant-input">
         <form onSubmit={handleSendMessage}>
-          <input
-            type="text"
+          <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type a message..."
             className="assistant-input-field"
             disabled={isLoading}
+            rows={4}
+            style={{
+              resize: "none",
+              minHeight: "120px", // Double the default height
+              height: "auto",
+              maxHeight: "300px", // Allow up to ~30% of panel height
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                if (input.trim()) handleSendMessage(e)
+              }
+            }}
           />
           <button type="submit" className="assistant-send-button" disabled={!input.trim() || isLoading}>
             Send
@@ -689,4 +711,3 @@ export function ChatPanel({
     </div>
   )
 }
-

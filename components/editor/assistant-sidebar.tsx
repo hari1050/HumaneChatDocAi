@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { fetchRecentChats, deleteChat } from "@/lib/chat-service-client"
 import { useToast } from "@/hooks/use-toast"
-import type { Chat } from "@/lib/chat-service"
+import type { Chat } from "@/lib/chat-service-client"
 
 interface AssistantSidebarProps {
   document: Document

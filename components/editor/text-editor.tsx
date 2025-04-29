@@ -63,6 +63,7 @@ export function TextEditor({
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [transformLimitReached, setTransformLimitReached] = useState(false)
+  const [showSavedIndicator, setShowSavedIndicator] = useState(false)
 
   // Selection toolbar state
   const [showSelectionToolbar, setShowSelectionToolbar] = useState(false)
@@ -287,13 +288,17 @@ export function TextEditor({
             // Wait for the API call to complete
             await onUpdateDocument(updates)
             setLastSaved(new Date())
+            // Show saved indicator
+            setShowSavedIndicator(true)
+            // Hide saved indicator after 3 seconds
+            setTimeout(() => setShowSavedIndicator(false), 3000)
           }
         } catch (error) {
           console.error("Failed to save document:", error)
         } finally {
           setIsSaving(false)
         }
-      }, 10000) // 10 seconds debounce
+      }, 1000) // 1 seconds debounce
     },
     [onUpdateDocument, title, contentChanged, titleChanged],
   )
@@ -402,13 +407,17 @@ export function TextEditor({
           // Wait for the API call to complete
           await onUpdateDocument(updates)
           setLastSaved(new Date())
+          // Show saved indicator
+          setShowSavedIndicator(true)
+          // Hide saved indicator after 3 seconds
+          setTimeout(() => setShowSavedIndicator(false), 3000)
         }
       } catch (error) {
         console.error("Failed to save document:", error)
       } finally {
         setIsSaving(false)
       }
-    }, 10000) // 10 seconds debounce
+    }, 1000) // 1 seconds debounce
   }
 
   // Handle document download
@@ -671,6 +680,24 @@ export function TextEditor({
           )}
         </div>
         <div className="flex items-center space-x-2">
+          {isSaving && (
+            <span className="text-xs text-gray-400 flex items-center">
+              <div className="h-3 w-3 mr-1 animate-spin rounded-full border-2 border-gray-400 border-t-transparent"></div>
+              Saving...
+            </span>
+          )}
+          {showSavedIndicator && !isSaving && (
+            <span className="text-xs text-green-500 flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                <path
+                  fillRule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Saved
+            </span>
+          )}
           <button
             className="p-2 rounded hover:bg-[#1a1a1a] transition-colors"
             onClick={handleDownloadDocument}

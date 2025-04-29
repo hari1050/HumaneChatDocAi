@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
         "You are responding to a content generation request. Format your response with proper HTML paragraph tags (<p>) and other HTML formatting as needed. " +
         "Your first paragraph should be a brief introduction to the content, explaining what you're creating. " +
         "The rest should be the full content with proper HTML formatting."
+        "Keep the response concise, less fluff, less jargon and straight to the point"
     }
 
     // Add document context if available

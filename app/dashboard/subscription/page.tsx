@@ -128,7 +128,7 @@ export default function SubscriptionPage() {
     {
       name: "pro",
       title: "Pro",
-      price: 29,
+      price: 16.99,
       description: "Advanced features for professionals",
       highlighted: true,
       features: [
@@ -142,7 +142,7 @@ export default function SubscriptionPage() {
     {
       name: "advanced",
       title: "Advanced",
-      price: 79,
+      price: 29.99,
       description: "Enterprise-grade features for teams",
       features: [
         { name: "Documents", free: "5", pro: "100", advanced: "Unlimited" },

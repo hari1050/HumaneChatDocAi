@@ -54,7 +54,7 @@ export default function PricingSection() {
     {
       name: "pro",
       title: "Pro",
-      price: 29,
+      price: 16.99,
       description: "Advanced features for professionals",
       highlighted: true,
       features: [
@@ -68,7 +68,7 @@ export default function PricingSection() {
     {
       name: "advanced",
       title: "Advanced",
-      price: 79,
+      price: 29.99,
       description: "Enterprise-grade features for teams",
       features: [
         "Unlimited Documents",
