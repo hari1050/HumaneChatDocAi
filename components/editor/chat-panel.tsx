@@ -203,6 +203,13 @@ export function ChatPanel({
     }
   }
 
+  // Function to render HTML content safely with proper spacing
+  const renderHtmlContent = (content: string) => {
+    // Add space after each closing paragraph tag if not already present
+    const formattedContent = content.replace(/<\/p>(?!\s)/g, "</p> ");
+    return { __html: formattedContent };
+  }
+
   // Handle sending a message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -221,35 +228,6 @@ export function ChatPanel({
     setInput("")
     setIsLoading(true)
     setStreamingMessage("") // Start with empty string
-
-    // REPLACE THIS SECTION that saves the user message immediately:
-    // Save the user message immediately
-    // if (!chatId && messages.length === 0) {
-    //   // This is the first message in a new chat
-    //   try {
-    //     const title = generateChatTitle(userMessage.content);
-    //     const newChat = await createChat(document.id, title, userMessage);
-    //     setChatId(newChat.id);
-
-    //     // Notify parent component that a chat was created
-    //     if (onChatUpdated) {
-    //       onChatUpdated(newChat.id);
-    //     }
-    //   } catch (error) {
-    //     console.error("Error creating new chat:", error);
-    //   }
-    // } else if (chatId) {
-    //   // Update existing chat with the new user message
-    //   try {
-    //     await updateChat(chatId, { messages: updatedMessages });
-    //   } catch (error) {
-    //     console.error("Error updating chat with user message:", error);
-    //   }
-    // }
-
-    // WITH THIS:
-    // We'll only save after the AI response is received
-    // No immediate saving of user message here
 
     // Create a new AbortController for this request
     if (abortControllerRef.current) {
@@ -319,7 +297,10 @@ export function ChatPanel({
                   setStreamingMessage(fullText)
                 }
 
-                if (data.done && data.fullText) {
+                if (data.done && data.analysis) {
+                  finalText = data.analysis
+                  setStreamingMessage(finalText)
+                } else if (data.done && data.fullText) {
                   finalText = data.fullText
                   setStreamingMessage(finalText)
                 }
@@ -353,8 +334,6 @@ export function ChatPanel({
           const newMessages = [...updatedMessages, aiMessage]
           setMessages(newMessages)
 
-          // REPLACE THIS SECTION that saves the conversation:
-          // Save the complete conversation including the AI response
           // Save the complete conversation including the AI response
           try {
             if (chatId) {
@@ -420,7 +399,7 @@ export function ChatPanel({
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content:
-          "I'm sorry, I encountered an error processing your request. Please try refreshing the page or contact support if the issue persists.",
+          "<p>I'm sorry, I encountered an error processing your request. Please try refreshing the page or contact support if the issue persists.</p>",
       }
 
       // Clear streaming message first
@@ -430,7 +409,6 @@ export function ChatPanel({
       const newMessages = [...updatedMessages, errorMessage]
       setMessages(newMessages)
 
-      // REPLACE THIS SECTION:
       // Save the error message to the chat history
       try {
         if (chatId) {
@@ -645,7 +623,12 @@ export function ChatPanel({
               key={message.id}
               className={`p-3 rounded-lg mb-4 ${message.role === "user" ? "bg-[#1a1a1a] ml-8" : "bg-[#111] mr-8"}`}
             >
-              {message.content}
+              {/* Render HTML content for assistant messages, plain text for user messages */}
+              {message.role === "assistant" ? (
+                <div dangerouslySetInnerHTML={renderHtmlContent(message.content)} />
+              ) : (
+                message.content
+              )}
               {message.role === "assistant" && <MessageActions messageId={message.id} content={message.content} />}
             </div>
           ))}
@@ -653,7 +636,8 @@ export function ChatPanel({
           {/* Only show streaming message if we're actively loading */}
           {isLoading && streamingMessage !== null && (
             <div className="bg-[#111] p-3 rounded-lg mb-4 mr-8">
-              {streamingMessage}
+              {/* Render streaming message as HTML */}
+              <div dangerouslySetInnerHTML={renderHtmlContent(streamingMessage)} />
               <span className="inline-block w-2 h-4 ml-1 bg-white animate-pulse"></span>
             </div>
           )}

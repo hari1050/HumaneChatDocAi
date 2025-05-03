@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
+import { GoogleGenAI } from "@google/genai"
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,12 +10,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get the Perplexity API key from environment variables
-    const apiKey = process.env.PERPLEXITY_API_KEY
+    // Get the Gemini API key from environment variables
+    const apiKey = process.env.GEMINI_API_KEY
 
     if (!apiKey) {
-      return NextResponse.json({ error: "Perplexity API key is not configured" }, { status: 500 })
+      return NextResponse.json({ error: "Gemini API key is not configured" }, { status: 500 })
     }
+
+    // Initialize Gemini client
+    const genAI = new GoogleGenAI({ apiKey })
 
     // Parse the request body
     const body = await req.json()
@@ -34,40 +38,41 @@ Follow these guidelines:
 4. If the transformation request is unclear, do your best interpretation
 5. Keep the length similar to the original unless specifically asked to make it longer or shorter`
 
-    // Make the request to Perplexity API
-    const response = await fetch("https://api.perplexity.ai/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "sonar",
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: `Transform the following text: "${text}"
-
-Instructions: ${prompt}`,
-          },
-        ],
+    // Make the request to Gemini API
+    const model = genAI.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: `Transform the following text: "${text}"\n\nInstructions: ${prompt}` }]
+        }
+      ],
+      config: {
         temperature: 0.7,
-        max_tokens: 1024,
-      }),
+        maxOutputTokens: 1024,
+        systemInstruction: systemPrompt
+      }
     })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      return NextResponse.json({ error: `Perplexity API error: ${errorText}` }, { status: response.status })
+    // Get the response
+    const response = await model
+    
+    if (!response) {
+      return NextResponse.json({ error: "Gemini API failed to provide a response" }, { status: 500 })
     }
 
-    const data = await response.json()
-    const transformedText = data.choices[0].message.content
+    // Extract the transformed text
+    const transformedText = response.text
 
     return NextResponse.json({ transformedText })
   } catch (error) {
     console.error("Error in transform API:", error)
     return NextResponse.json({ error: "An error occurred while processing your request" }, { status: 500 })
+    
+    // If the error has more details, you can return them like this:
+    // return NextResponse.json({ 
+    //   error: "An error occurred while processing your request",
+    //   details: error instanceof Error ? error.message : String(error)
+    // }, { status: 500 })
   }
 }

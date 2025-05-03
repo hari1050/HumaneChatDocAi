@@ -435,14 +435,14 @@ export function ResearchPanel({ webSources, setWebSources }: ResearchPanelProps)
                         >
                           {citation}
                         </a>
-                        <Button
+                        {/* <Button
                           variant="ghost"
                           size="sm"
                           className="h-6 px-2 ml-2"
                           onClick={() => handleAddSource(citation)}
                         >
                           Add Source
-                        </Button>
+                        </Button> */}
                       </li>
                     ))}
                   </ul>

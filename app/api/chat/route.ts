@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server"
 import { extractUrlContent } from "@/utils/urlContentExtractor"
 import { checkFeatureLimit, trackFeatureUsage } from "@/middleware/subscription-middleware"
+import { GoogleGenAI } from "@google/genai"
 
 // Define the structure of a chat message
 export interface ChatMessage {
@@ -44,13 +45,16 @@ function isContentRequest(message: string): boolean {
 function ensureHTMLFormat(text: string): string {
   // Check if the text already has HTML paragraphs
   if (text.trim().startsWith("<p>")) {
-    return text
+    // Add space after each closing paragraph tag if not already present
+    return text.replace(/<\/p>(?!\s)/g, "</p> ");
   }
 
   // Split by double newlines and wrap each in paragraph tags
   const paragraphs = text.split(/\n\n+/)
-  return paragraphs.map((para) => `<p>${para.trim()}</p>`).join("")
+  return paragraphs.map((para) => `<p>${para.trim()}</p> `).join("")
 }
+
+// This function is no longer needed as we directly map messages when creating the chat
 
 export async function POST(req: NextRequest) {
   try {
@@ -60,15 +64,18 @@ export async function POST(req: NextRequest) {
       return limitResponse
     }
 
-    // Get the Perplexity API key from environment variables
-    const apiKey = process.env.PERPLEXITY_API_KEY
+    // Get the Gemini API key from environment variables
+    const apiKey = process.env.GEMINI_API_KEY
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "Perplexity API key is not configured" }), {
+      return new Response(JSON.stringify({ error: "Gemini API key is not configured" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       })
     }
+
+    // Initialize Gemini client
+    const genAI = new GoogleGenAI({ apiKey })
 
     // Parse the request body
     const body = (await req.json()) as ChatRequest
@@ -101,8 +108,16 @@ export async function POST(req: NextRequest) {
         "\n\nIMPORTANT FORMATTING INSTRUCTIONS:\n" +
         "You are responding to a content generation request. Format your response with proper HTML paragraph tags (<p>) and other HTML formatting as needed. " +
         "Your first paragraph should be a brief introduction to the content, explaining what you're creating. " +
-        "The rest should be the full content with proper HTML formatting."
-        "Keep the response concise, less fluff, less jargon and straight to the point"
+        "The rest should be the full content with proper HTML formatting. " +
+        "Keep the response concise, less fluff, less jargon and straight to the point. " +
+        "Always add a space after each paragraph tag (</p> ). " +
+        "IMPORTANT: Only introduce yourself in the first message of the conversation. In subsequent messages, DO NOT introduce yourself again. Just reply directly to the user's question or request."
+    } else {
+      systemPrompt +=
+        "\n\nIMPORTANT FORMATTING INSTRUCTIONS:\n" +
+        "Format your response with proper HTML paragraph tags (<p>) and other HTML formatting as needed. " +
+        "Always add a space after each paragraph tag (</p> ). " +
+        "IMPORTANT: Only introduce yourself in the first message of the conversation. In subsequent messages, DO NOT introduce yourself again. Just reply directly to the user's question or request."
     }
 
     // Add document context if available
@@ -144,34 +159,24 @@ export async function POST(req: NextRequest) {
             // Summarize very long content to avoid token limits
             let processedContent = content
             if (content.length > 8000) {
-              // Use Perplexity to summarize very long content
-              const summaryResponse = await fetch("https://api.perplexity.ai/chat/completions", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${apiKey}`,
-                },
-                body: JSON.stringify({
-                  model: "sonar-pro",
-                  messages: [
-                    {
-                      role: "system",
-                      content:
-                        "You are a content summarizer. Create a detailed summary that captures the key information from the text.",
-                    },
-                    {
-                      role: "user",
-                      content: `Summarize this content in detail:\n\n${content.substring(0, 12000)}`,
-                    },
-                  ],
+              // Use Gemini to summarize very long content
+              const summaryResponse = await genAI.models.generateContent({
+                model: "gemini-2.0-flash",
+                contents: [
+                  {
+                    role: "user", 
+                    parts: [{ text: `Summarize this content in detail:\n\n${content.substring(0, 12000)}` }]
+                  }
+                ],
+                config: {
+                  maxOutputTokens: 1000,
                   temperature: 0.1,
-                  max_tokens: 1000,
-                }),
+                  systemInstruction: "You are a content summarizer. Create a detailed summary that captures the key information from the text."
+                }
               })
 
-              if (summaryResponse.ok) {
-                const summaryData = await summaryResponse.json()
-                processedContent = summaryData.choices[0].message.content
+              if (summaryResponse) {
+                processedContent = summaryResponse.text || "";
                 systemPrompt += `\n\nSource (${source.url}) - Summarized:\n${processedContent}`
               } else {
                 // If summarization fails, use a truncated version
@@ -187,150 +192,93 @@ export async function POST(req: NextRequest) {
         } catch (error) {
           console.error(`Error extracting content for ${source.url}:`, error)
 
-          // Fallback to Perplexity Sonar as a last resort
+          // Fallback to Gemini as a last resort
           try {
-            console.log(`Falling back to Perplexity Sonar for ${source.url}`)
-            const response = await fetch("https://api.perplexity.ai/chat/completions", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${apiKey}`,
-              },
-              body: JSON.stringify({
-                model: "sonar-pro",
-                messages: [
-                  {
-                    role: "system",
-                    content:
-                      "You are a helpful web scraper. Extract and summarize the main content from the provided URL.",
-                  },
-                  {
-                    role: "user",
-                    content: `Please extract and summarize the main content from this URL: ${source.url}`,
-                  },
-                ],
+            console.log(`Falling back to Gemini for ${source.url}`)
+            const scraperResponse = await genAI.models.generateContent({
+              model: "gemini-2.0-flash",
+              contents: [
+                {
+                  role: "user", 
+                  parts: [{ text: `Please extract and summarize the main content from this URL: ${source.url}` }]
+                }
+              ],
+              config: {
+                maxOutputTokens: 1000,
                 temperature: 0.1,
-                max_tokens: 1000,
-              }),
+                systemInstruction: "You are a helpful web scraper. Extract and summarize the main content from the provided URL."
+              }
             })
 
-            if (response.ok) {
-              const data = await response.json()
-              const content = data.choices[0].message.content
+            if (scraperResponse) {
+              const content = scraperResponse.text
               systemPrompt += `\n\nSource (${source.url}):\n${content}`
             } else {
               systemPrompt += `\n\nSource (${source.url}): [Failed to fetch content]`
             }
           } catch (fallbackError) {
-            console.error(`Error in Perplexity fallback for ${source.url}:`, fallbackError)
+            console.error(`Error in Gemini fallback for ${source.url}:`, fallbackError)
             systemPrompt += `\n\nSource (${source.url}): [Failed to fetch content]`
           }
         }
       }
     }
 
-    // Prepare the messages array for the API
-    const apiMessages = [{ role: "system", content: systemPrompt }, ...messages]
+    // For Gemini, we'll use the systemInstruction config parameter for the system prompt
 
     // Create a streaming response
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          // Make the request to Perplexity API with streaming enabled
-          const response = await fetch("https://api.perplexity.ai/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-              model: "sonar-pro",
-              messages: apiMessages,
+          // Convert previous messages to Gemini format for history
+          const userMessages = messages.map(msg => ({
+            role: msg.role === "user" ? "user" : "model",
+            parts: [{ text: msg.content }]
+          }))
+          
+          // Create a chat session
+          const chat = genAI.chats.create({
+            model: "gemini-2.0-flash",
+            history: userMessages.slice(0, -1), // All messages except the last one
+            config: {
               temperature: 0.7,
-              max_tokens: 2048,
-              stream: true, // Enable streaming
-            }),
-          })
-
-          if (!response.ok) {
-            const errorText = await response.text()
-            controller.enqueue(encoder.encode(JSON.stringify({ error: `Perplexity API error: ${errorText}` })))
-            controller.close()
-            return
-          }
-
-          if (!response.body) {
-            controller.enqueue(encoder.encode(JSON.stringify({ error: "No response body" })))
-            controller.close()
-            return
-          }
-
-          const reader = response.body.getReader()
-          let fullText = ""
-          let buffer = "" // Buffer to accumulate partial chunks
-
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-
-            // Decode the chunk and add it to our buffer
-            const chunk = new TextDecoder().decode(value)
-            buffer += chunk
-
-            // Process complete messages in the buffer
-            let processedBuffer = ""
-            const lines = buffer.split("\n")
-
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i]
-
-              // If this isn't the last line, it's a complete line
-              if (i < lines.length - 1) {
-                if (line.startsWith("data: ")) {
-                  try {
-                    const jsonStr = line.slice(6).trim() // Remove 'data: ' prefix
-
-                    // Check for [DONE] message
-                    if (jsonStr === "[DONE]") continue
-
-                    const json = JSON.parse(jsonStr)
-
-                    if (json.choices && json.choices[0].delta && json.choices[0].delta.content) {
-                      const textChunk = json.choices[0].delta.content
-                      fullText += textChunk
-
-                      // Format the raw text chunk for HTML display
-                      const formattedChunk = textChunk
-                        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>") // Bold
-                        .replace(/\*([^*]+)\*/g, "<em>$1</em>") // Italic
-                        .replace(/^#\s+([^#]+)$/m, "<h1>$1</h1>") // H1
-                        .replace(/^##\s+([^#]+)$/m, "<h2>$1</h2>") // H2
-                        .replace(/^###\s+([^#]+)$/m, "<h3>$1</h3>") // H3
-                        .replace(/^-\s+(.+)$/m, "• $1") // List items
-
-                      // Send the chunk to the client
-                      controller.enqueue(
-                        encoder.encode(
-                          JSON.stringify({
-                            chunk: formattedChunk,
-                          }),
-                        ),
-                      )
-                    }
-                  } catch (e) {
-                    console.error("Error parsing JSON from stream:", e, line)
-                    // Continue processing other lines even if one fails
-                  }
-                }
-              } else {
-                // This is the last line, which might be incomplete
-                processedBuffer = line
-              }
+              maxOutputTokens: 2048,
+              systemInstruction: systemPrompt
             }
+          })
+          
+          // Get the last message to send
+          const lastMessage = messages[messages.length - 1].content
+          
+          // Stream the response
+          const responseStream = await chat.sendMessageStream({
+            message: lastMessage
+          })
+          
+          let fullText = ""
 
-            // Update buffer with any unprocessed content
-            buffer = processedBuffer
+          for await (const chunk of responseStream) {
+            const textChunk = chunk.text || ""
+            fullText += textChunk
+            
+            // Format the raw text chunk for HTML display
+            const formattedChunk = textChunk
+              .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>") // Bold
+              .replace(/\*([^*]+)\*/g, "<em>$1</em>") // Italic
+              .replace(/^#\s+([^#]+)$/m, "<h1>$1</h1>") // H1
+              .replace(/^##\s+([^#]+)$/m, "<h2>$1</h2>") // H2
+              .replace(/^###\s+([^#]+)$/m, "<h3>$1</h3>") // H3
+              .replace(/^-\s+(.+)$/m, "• $1") // List items
+
+            // Send the chunk to the client
+            controller.enqueue(
+              encoder.encode(
+                JSON.stringify({
+                  chunk: formattedChunk,
+                }),
+              ),
+            )
           }
 
           // Format the final response based on request type

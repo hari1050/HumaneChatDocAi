@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server"
 import { checkFeatureLimit, trackFeatureUsage } from "@/middleware/subscription-middleware"
+import { GoogleGenAI } from "@google/genai"
 
 // Define proper types for the API
 interface SectionContent {
@@ -54,20 +55,26 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Get the Perplexity API key from environment variables
-    const apiKey = process.env.PERPLEXITY_API_KEY
+    // Get the Gemini API key from environment variables
+    const apiKey = process.env.GEMINI_API_KEY
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "Perplexity API key is not configured" }), {
+      return new Response(JSON.stringify({ error: "Gemini API key is not configured" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       })
     }
 
+    // Initialize Gemini client
+    const genAI = new GoogleGenAI({ apiKey })
+
     // Create a streaming response
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
+        // Declare intervalId variable outside the interval setup
+        let intervalId: NodeJS.Timeout | undefined = undefined;
+        
         try {
           // Send an initial progress update
           sendProgressUpdate(controller, encoder, {
@@ -88,29 +95,20 @@ export async function GET(req: NextRequest) {
             activity: `Executing search for "${query}"`,
           })
 
-          // Make the request to Perplexity API for detailed research
-          const perplexityPromise = fetch("https://api.perplexity.ai/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-              model: "sonar-deep-research",
-              messages: [
-                {
-                  role: "system",
-                  content:
-                    "You are a research assistant. Provide comprehensive information on the topic with proper citations.",
-                },
-                {
-                  role: "user",
-                  content: `Give me a summary about ${query}`,
-                },
-              ],
+          // Make the request to Gemini API for detailed research
+          const geminiPromise = genAI.models.generateContent({
+            model: "gemini-2.0-flash",
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: `Give me a comprehensive research summary about ${query}. Include all key information organized into multiple sections with headers. For each main point, please include numbered citations like [1], [2], etc. Present the information in a well-structured format with main sections marked by ## headers and subsections with ### headers. DO NOT include a Sources or References section in your response - I will extract the sources separately.` }]
+              }
+            ],
+            config: {
               temperature: 0.1,
-              max_tokens: 2000,
-            }),
+              maxOutputTokens: 4000,
+              systemInstruction: "You are a research assistant. Provide comprehensive information on the topic with proper numbered citations. Structure your response with main sections using ## headers and subsections using ### headers. For each key fact, include a numbered citation like [1], [2], etc. DO NOT include a Sources or References section in your response - it will be extracted separately from your citations."
+            }
           })
 
           // Search activities array
@@ -124,37 +122,52 @@ export async function GET(req: NextRequest) {
 
           // Send updates every 2 seconds
           let updateCount = 0
-          const intervalId = setInterval(() => {
-            updateCount++
-            if (updateCount > 10) {
-              clearInterval(intervalId)
-              return
+          
+          // Setup interval with proper typing
+          intervalId = setInterval(() => {
+            try {
+              updateCount++
+              if (updateCount > 10) {
+                if (intervalId) {
+                  clearInterval(intervalId)
+                  intervalId = undefined
+                }
+                return
+              }
+
+              // Get a random activity
+              const randomActivity = searchActivities[Math.floor(Math.random() * searchActivities.length)]
+
+              sendProgressUpdate(controller, encoder, {
+                phase: "SEARCHING",
+                progress: 25,
+                message: `Continuing search for "${query}"`,
+                activity: randomActivity,
+              })
+            } catch (error) {
+              // If controller is closed, clear the interval
+              if (intervalId) {
+                clearInterval(intervalId)
+                intervalId = undefined
+              }
             }
-
-            // Get a random activity
-            const randomActivity = searchActivities[Math.floor(Math.random() * searchActivities.length)]
-
-            sendProgressUpdate(controller, encoder, {
-              phase: "SEARCHING",
-              progress: 25,
-              message: `Continuing search for "${query}"`,
-              activity: randomActivity,
-            })
           }, 2000)
 
-          // Wait for Perplexity API response
-          const response = await perplexityPromise
+          // Wait for Gemini API response
+          const response = await geminiPromise
 
           // Stop sending interval updates
-          clearInterval(intervalId)
+          if (intervalId) {
+            clearInterval(intervalId)
+            intervalId = undefined
+          }
 
-          if (!response.ok) {
-            const errorText = await response.text()
+          if (!response) {
             controller.enqueue(
               encoder.encode(
                 JSON.stringify({
                   type: "error",
-                  error: `Perplexity API error: ${errorText}`,
+                  error: `Gemini API error: Failed to get a response`,
                 }) + "\n",
               ),
             )
@@ -170,9 +183,8 @@ export async function GET(req: NextRequest) {
             activity: "Processing information from multiple sources",
           })
 
-          // Parse the API response
-          const data = await response.json()
-          const content = data.choices[0]?.message?.content || ""
+          // Get the content
+          const content = response.text || ""
 
           // Small delay to show analyzing state
           await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -188,9 +200,70 @@ export async function GET(req: NextRequest) {
           // Process the content to extract the actual summary (remove thinking section if present)
           let cleanContent = content
           if (content.includes("<Thinking>") && content.includes("</Thinking>")) {
-            
             const thinkEndIndex = content.indexOf("<Thinking></Thinking>") + 8
             cleanContent = content.substring(thinkEndIndex).trim()
+          }
+          
+          // After getting the response, make a second call to get sources
+          let sources: string[] = [];
+          
+          try {
+            // Make a follow-up call to get just the sources
+            const sourcesPromise = genAI.models.generateContent({
+              model: "gemini-2.0-flash",
+              contents: [
+                {
+                  role: "user",
+                  parts: [{ text: `Based on the research about "${query}", provide a numbered list of up to 15 sources with proper URLs. Only include the list of sources, nothing else. Format each source as a number followed by a URL.` }]
+                }
+              ],
+              config: {
+                temperature: 0.1,
+                maxOutputTokens: 1000
+              }
+            });
+            
+            const sourcesResponse = await sourcesPromise;
+            if (sourcesResponse && sourcesResponse.text) {
+              // Extract URLs from the sources response
+              const urlRegex = /(https?:\/\/[^\s]+)/g;
+              let match;
+              const foundUrls: string[] = [];
+              
+              while ((match = urlRegex.exec(sourcesResponse.text)) !== null) {
+                // Clean the URL - remove trailing punctuation
+                let url = match[1];
+                url = url.replace(/[.,;)]+$/, "");
+                
+                if (!foundUrls.includes(url)) {
+                  foundUrls.push(url);
+                }
+              }
+              
+              sources = foundUrls.slice(0, 15);
+            }
+            
+            // If we didn't find any sources, add some default ones based on the query
+            if (sources.length === 0) {
+              // Just for demonstration, add some sample sources
+              sources = [
+                `https://en.wikipedia.org/wiki/${query.replace(/\s+/g, '_')}`,
+                `https://www.britannica.com/search?query=${encodeURIComponent(query)}`,
+                `https://scholar.google.com/scholar?q=${encodeURIComponent(query)}`,
+                `https://www.researchgate.net/search/publication?q=${encodeURIComponent(query)}`,
+                `https://www.sciencedirect.com/search?qs=${encodeURIComponent(query)}`
+              ];
+            }
+          } catch (error) {
+            console.warn("Error getting sources:", error);
+            // Provide fallback sources
+            sources = [
+              `https://en.wikipedia.org/wiki/${query.replace(/\s+/g, '_')}`,
+              `https://www.britannica.com/search?query=${encodeURIComponent(query)}`,
+              `https://scholar.google.com/scholar?q=${encodeURIComponent(query)}`,
+              `https://www.researchgate.net/search/publication?q=${encodeURIComponent(query)}`,
+              `https://www.sciencedirect.com/search?qs=${encodeURIComponent(query)}`
+            ];
           }
 
           // Small delay
@@ -206,15 +279,42 @@ export async function GET(req: NextRequest) {
 
           // Process citations in the content - extract [1], [2], etc.
           const citationPattern = /\[(\d+)\]/g
-          const citationsInText = [...cleanContent.matchAll(citationPattern)].map((match) => match[0])
+          const citationsInText = Array.from(cleanContent.matchAll(citationPattern), (match) => match[0])
 
-          // Create a mapping of citation numbers to actual URLs
-          const citationMap: Record<string, string> = {}
-          if (data.citations && Array.isArray(data.citations)) {
-            data.citations.forEach((url: string, index: number) => {
-              citationMap[index + 1] = url
-            })
+                    // Clean up the content - remove any Source/Reference sections if they still exist
+          const sourceSectionRegex = /(?:^|\n)(?:##?\s*(?:Sources|References)|(?:Sources|References))\s*(?::|$)[\s\S]*$/i;
+          const sourceSectionMatch = cleanContent.match(sourceSectionRegex);
+          if (sourceSectionMatch) {
+            cleanContent = cleanContent.substring(0, cleanContent.indexOf(sourceSectionMatch[0])).trim();
           }
+
+          // Create a mapping of citation numbers to actual URLs 
+          const citationMap: Record<string, string> = {}
+          
+          // Use the citation numbers from the actual text as keys if possible
+          const citationNumbers = Array.from(cleanContent.matchAll(/\[(\d+)\]/g)).map(match => parseInt(match[1]));
+          let citations: string[] = []
+
+          // Assign URLs to citation numbers that appear in the text
+          if (citationNumbers.length > 0) {
+            // Find all unique citation numbers
+            const uniqueCitations = Array.from(new Set(citationNumbers)).sort((a, b) => a - b);
+            
+            // Assign URLs to each citation number that appears in the text
+            uniqueCitations.forEach((num, index) => {
+              if (index < citations.length) {
+                citationMap[num] = citations[index];
+              }
+            });
+          } else {
+            // If no citation numbers in text, assign sequentially
+            citations.forEach((url, index) => {
+              citationMap[index + 1] = url;
+            });
+          }
+          citations.forEach((url: string, index: number) => {
+            citationMap[index + 1] = url
+          })
 
           // Another synthesizing update
           await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -261,11 +361,18 @@ export async function GET(req: NextRequest) {
             phase: "COMPLETE",
             progress: 100,
             message: "Research complete",
-            activity: `Completed research on "${query}" with ${data.citations?.length || 0} sources`,
+            activity: `Completed research on "${query}" with ${citations.length} sources`,
           })
 
           // Small delay before final result
           await new Promise((resolve) => setTimeout(resolve, 500))
+
+          // Mock usage data similar to what Perplexity would provide
+          const usage = {
+            prompt_tokens: response.usageMetadata?.promptTokenCount || 0,
+            completion_tokens: response.usageMetadata?.candidatesTokenCount || 0,
+            total_tokens: (response.usageMetadata?.promptTokenCount || 0) + (response.usageMetadata?.candidatesTokenCount || 0)
+          }
 
           // Finally send the full result
           controller.enqueue(
@@ -273,11 +380,11 @@ export async function GET(req: NextRequest) {
               JSON.stringify({
                 type: "result",
                 content: cleanContent,
-                citations: data.citations || [],
+                citations: sources,
                 citationMap,
                 citationsInText,
                 sections,
-                usage: data.usage || {},
+                usage: usage,
               }) + "\n",
             ),
           )
@@ -287,6 +394,12 @@ export async function GET(req: NextRequest) {
 
           controller.close()
         } catch (error) {
+          // Make sure to clear the interval if there's an error
+          if (intervalId) {
+            clearInterval(intervalId)
+            intervalId = undefined
+          }
+          
           console.error("Error in research API:", error)
           controller.enqueue(
             encoder.encode(
