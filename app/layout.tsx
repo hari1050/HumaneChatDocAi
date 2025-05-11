@@ -9,8 +9,13 @@ import { Inter } from "next/font/google"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "WriticaAI - AI Document Editor",
+  title: "Writica - AI Document Editor",
   description: "An intelligent writing assistant that helps you create, refine, and enhance your content.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+  },
 }
 
 export default function RootLayout({

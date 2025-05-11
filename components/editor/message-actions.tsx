@@ -21,6 +21,26 @@ export function MessageActions({ messageId, content }: MessageActionsProps) {
   // Check if this message has an active change
   const hasActiveChange = activeChange?.appliedMessageId === messageId
 
+  // Process content to fix spacing issues
+  const processContent = (content: string) => {
+    // Remove extra line breaks and normalize spacing
+    const processed = content
+      // Replace multiple consecutive line breaks with a single one
+      .replace(/\n\s*\n\s*\n/g, "\n\n")
+      // Remove extra spaces at the beginning of lines
+      .replace(/\n\s+/g, "\n")
+      // Ensure proper paragraph spacing in HTML
+      .replace(/<\/p>\s*<p>/g, "</p><p>")
+      // Remove any empty paragraphs
+      .replace(/<p>\s*<\/p>/g, "")
+      // Fix any double spacing between paragraphs
+      .replace(/<\/p>\s*<\/p>/g, "</p>")
+      // Ensure proper list item spacing
+      .replace(/<\/li>\s*<li>/g, "</li><li>")
+
+    return processed
+  }
+
   // Handle applying the message to the editor
   const handleApply = async () => {
     if (!editorRef.current?.editor) {
@@ -44,7 +64,10 @@ export function MessageActions({ messageId, content }: MessageActionsProps) {
 
     setIsApplying(true)
     try {
-      const change = await editorRef.current.applyText(content, messageId)
+      // Process the content to fix spacing issues
+      const processedContent = processContent(content)
+
+      const change = await editorRef.current.applyText(processedContent, messageId)
       if (change) {
         setIsApplied(true)
         setCurrentChangeId(change.id)
@@ -158,4 +181,3 @@ export function MessageActions({ messageId, content }: MessageActionsProps) {
     </div>
   )
 }
-

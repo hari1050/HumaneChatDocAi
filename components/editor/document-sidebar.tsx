@@ -17,8 +17,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useState } from "react"
 import { ResizeHandle } from "@/components/ui/resize-handle"
-import Link from "next/link"
 import { SettingsDialog } from "./settings-dialog"
+import { SubscriptionModal } from "@/components/subscription/subscription-modal"
 
 interface DocumentSidebarProps {
   documents: Document[]
@@ -41,6 +41,7 @@ export function DocumentSidebar({
   const [sidebarWidth, setSidebarWidth] = useState(240)
   const [isDragging, setIsDragging] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showSubscription, setShowSubscription] = useState(false)
 
   const handleResize = (delta: number) => {
     setSidebarWidth((prev) => {
@@ -126,13 +127,13 @@ export function DocumentSidebar({
       </div>
 
       <div className="mt-auto border-t border-[#2a2a2a] py-2">
-        <Link
-          href="/dashboard/subscription"
+        <button
+          onClick={() => setShowSubscription(true)}
           className="flex items-center px-3 py-2 w-full text-gray-400 hover:text-white transition-colors"
         >
           <Gauge className="h-3 w-3 mr-2" />
           <span className="text-xs">Subscription</span>
-        </Link>
+        </button>
         <button
           onClick={() => setShowSettings(true)}
           className="flex items-center px-3 py-2 w-full text-gray-400 hover:text-white transition-colors"
@@ -149,6 +150,7 @@ export function DocumentSidebar({
       </div>
 
       <SettingsDialog open={showSettings} onOpenChange={setShowSettings} />
+      <SubscriptionModal open={showSubscription} onOpenChange={setShowSubscription} />
 
       <AlertDialog open={!!documentToDelete} onOpenChange={(open) => !open && setDocumentToDelete(null)}>
         <AlertDialogContent className="bg-background border border-[#1a1a1a]">

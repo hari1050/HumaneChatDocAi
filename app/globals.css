@@ -358,6 +358,17 @@ body {
   margin-right: 6px;
 }
 
+.document-tag-selected-text {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 6px;
+  background-color: #130444;
+  border-color: #ffffff;
+  border-radius: 4px;
+  font-size: 11px;
+  margin-right: 6px;
+}
+
 .document-tag-icon {
   margin-right: 4px;
 }

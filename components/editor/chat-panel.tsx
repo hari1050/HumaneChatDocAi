@@ -6,11 +6,12 @@ import { useState, useRef, useEffect } from "react"
 import type { Document } from "./editor-container"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { MessageSquare, X, Plus, Loader2, ExternalLink, FileText, Check } from "lucide-react"
+import { MessageSquare, X, Plus, Loader2, ExternalLink, FileText, Check, Pen } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MessageActions } from "./message-actions"
 import { createChat, updateChat, generateChatTitle } from "@/lib/chat-service-client"
+import { addToDocumentContextEvent } from "./text-editor" // Import the event name
 
 type Message = {
   id: string
@@ -65,6 +66,31 @@ export function ChatPanel({
   const webSourceInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [contextSnippets, setContextSnippets] = useState<string[]>([])
+
+  // Listen for the custom event to add text to document context
+  useEffect(() => {
+    const handleAddToDocumentContext = (event: CustomEvent) => {
+      const { text } = event.detail
+
+      // Add the text as a context snippet
+      setContextSnippets((prev) => [...prev, text])
+
+      // Show a toast notification
+      toast({
+        title: "Context Added",
+        description: "Text has been added to document context",
+      })
+    }
+
+    // Add event listener
+    window.addEventListener(addToDocumentContextEvent, handleAddToDocumentContext as EventListener)
+
+    // Clean up
+    return () => {
+      window.removeEventListener(addToDocumentContextEvent, handleAddToDocumentContext as EventListener)
+    }
+  }, [toast])
 
   // Auto-resize textarea based on content
   const adjustTextareaHeight = () => {
@@ -252,6 +278,8 @@ export function ChatPanel({
             content: doc?.content || "",
           }
         }),
+        // Add context snippets to the request
+        contextSnippets: contextSnippets,
       }
 
       // Send request to API with streaming
@@ -334,7 +362,7 @@ export function ChatPanel({
           const newMessages = [...updatedMessages, aiMessage]
           setMessages(newMessages)
 
-          // Save the complete conversation including the AI response
+          // Clear context snippets after they've been used
           try {
             if (chatId) {
               // Update existing chat with all messages
@@ -494,6 +522,11 @@ export function ChatPanel({
     })
   }
 
+  // Handle removing a context snippet
+  const handleRemoveContextSnippet = (index: number) => {
+    setContextSnippets((prev) => prev.filter((_, i) => i !== index))
+  }
+
   // Get other documents (excluding current document)
   const otherDocuments = allDocuments.filter((doc) => doc.id !== document.id)
 
@@ -559,6 +592,22 @@ export function ChatPanel({
               </div>
             )
           })}
+
+          {/* Display context snippets */}
+          {contextSnippets.map((snippet, index) => (
+            <div key={`snippet-${index}`} className="document-tag-selected-text bg-blue-500/20 border-white-500/30">
+              <Pen className="h-3 w-3 mr-1" />
+              <span className="truncate max-w-[150px]" title={snippet}>
+                {snippet.length > 20 ? snippet.substring(0, 20) + "..." : snippet}
+              </span>
+              <button
+                className="ml-1 text-muted-foreground hover:text-foreground"
+                onClick={() => handleRemoveContextSnippet(index)}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
         </div>
       </div>
 

@@ -25,6 +25,7 @@ import {
   Copy,
   ChevronRight,
   ChevronLeft,
+  CheckCircle2,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { exportHtmlAsDocx } from "@/lib/docx-export"
@@ -33,6 +34,9 @@ import { Plugin, PluginKey } from "prosemirror-state"
 import { Decoration, DecorationSet } from "prosemirror-view"
 import { BlockIndependence, ImprovedBackspace } from "./custom-extensions"
 import { LimitWarning } from "@/components/subscription/limit-warning"
+
+// Define a custom event for adding text to document context
+export const addToDocumentContextEvent = "add-to-document-context"
 
 interface TextEditorProps {
   document: Document
@@ -205,17 +209,21 @@ export function TextEditor({
         // Store the original text
         const originalText = editor.state.doc.textBetween(from, to)
 
+        // Calculate the exact length of the text to be inserted
+        // This ensures we only highlight what we insert
+        const insertLength = text.length
+
         // Apply the change
         editor.chain().focus().deleteRange({ from, to }).insertContent(text).run()
 
-        // Create change object
+        // Create change object with precise boundaries
         const change: EditorChange = {
           id: changeId,
           appliedMessageId: messageId,
           originalText,
           newText: text,
           from,
-          to: from + text.length,
+          to: from + insertLength, // Use exact length of inserted text
         }
 
         // Set as active change
@@ -298,7 +306,7 @@ export function TextEditor({
         } finally {
           setIsSaving(false)
         }
-      }, 1000) // 1 seconds debounce
+      }, 2000) // 2 seconds debounce
     },
     [onUpdateDocument, title, contentChanged, titleChanged],
   )
@@ -417,7 +425,7 @@ export function TextEditor({
       } finally {
         setIsSaving(false)
       }
-    }, 1000) // 1 seconds debounce
+    }, 2000) // 2 seconds debounce
   }
 
   // Handle document download
@@ -518,24 +526,24 @@ export function TextEditor({
     }
   }
 
-  // Handle adding selected text to chat
-  const handleAddToChat = (text: string) => {
-    // Get the assistant sidebar and find the chat input
-    const assistantSidebar = document.querySelector(".assistant-sidebar")
-    if (assistantSidebar) {
-      const chatInput = assistantSidebar.querySelector(".assistant-input-field") as HTMLInputElement
-      if (chatInput) {
-        // If there's already text in the input, add a space
-        if (chatInput.value && !chatInput.value.endsWith(" ")) {
-          chatInput.value += " "
-        }
-        // Add the selected text to the input
-        chatInput.value += text
-        // Focus the input
-        chatInput.focus()
-      }
-    }
+  // Handle adding selected text to document context
+  const handleAddToDocumentContext = (text: string) => {
+    // Create a custom event to communicate with the chat panel
+    const event = new CustomEvent(addToDocumentContextEvent, {
+      detail: { text },
+    })
+
+    // Dispatch the event to be caught by the chat panel
+    window.dispatchEvent(event)
+
+    // Close the selection toolbar
     setShowSelectionToolbar(false)
+
+    // Show a toast notification
+    toast({
+      title: "Added to Context",
+      description: "The selected text has been added to document context",
+    })
   }
 
   // Add this effect to handle keyboard shortcuts
@@ -585,7 +593,7 @@ export function TextEditor({
         }
       }
 
-      // Add selection to chat shortcut (Ctrl/Cmd + L)
+      // Add selection to document context shortcut (Ctrl/Cmd + L)
       if ((e.ctrlKey || e.metaKey) && e.key === "l") {
         e.preventDefault()
 
@@ -593,7 +601,7 @@ export function TextEditor({
         if (from !== to) {
           const text = editor.state.doc.textBetween(from, to, " ")
           if (text.trim()) {
-            handleAddToChat(text)
+            handleAddToDocumentContext(text)
           }
         }
       }
@@ -688,13 +696,7 @@ export function TextEditor({
           )}
           {showSavedIndicator && !isSaving && (
             <span className="text-xs text-green-500 flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                <path
-                  fillRule="evenodd"
-                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
+              <CheckCircle2 className="h-3 w-3 mr-1" />
               Saved
             </span>
           )}
@@ -839,7 +841,7 @@ export function TextEditor({
           <SelectionToolbar
             selectedText={selectedText}
             onTransform={handleTransformText}
-            onAddToChat={handleAddToChat}
+            onAddToChat={handleAddToDocumentContext} // Changed to use the new function
             onClose={() => setShowSelectionToolbar(false)}
             position={selectionPosition}
             editorBounds={editorBounds || new DOMRect(0, 0, 0, 0)}
