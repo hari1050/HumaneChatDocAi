@@ -68,7 +68,7 @@ export default function PricingSection() {
     {
       name: "advanced",
       title: "Advanced",
-      price: 49.99,
+      price: 29.99,
       description: "Enterprise-grade features for teams",
       features: [
         "Unlimited Documents",
